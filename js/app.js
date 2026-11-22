@@ -9,8 +9,9 @@ import { initAuth, showAuth, showApp, showSetup } from './auth.js';
 import { initChatListUI, renderChatList, renderSidebarMe } from './chatlist.js';
 import {
   initChatViewUI, openChat, closeChat, onNewMessage, onMessageDeleted,
-  onMembersUpdated, onPresenceChanged, initLightboxUI,
+  onMessageUpdated, onMembersUpdated, onPresenceChanged, initLightboxUI,
 } from './chatview.js';
+import { applyPrefs } from './settings.js';
 import { startPresence, stopPresence } from './presence.js';
 
 let realtimeChan = null;
@@ -19,6 +20,9 @@ let enterPromise = null;
 // ================== ЗАПУСК ==================
 
 async function boot() {
+  // 0. Пользовательские настройки внешнего вида и звука
+  applyPrefs();
+
   // 1. Конфигурация Supabase
   const cfg = resolveConfig();
   if (!cfg) {
@@ -150,6 +154,12 @@ function startRealtime() {
   const sb = getSb();
   realtimeChan = sb.channel('msp-db')
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => onDbMessage(payload.new))
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages' }, (payload) => {
+      if (payload.new) {
+        bus.emit('message:updated', payload.new);
+        onMessageUpdated(payload.new);
+      }
+    })
     .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'messages' }, (payload) => {
       if (payload.old && payload.old.id) {
         bus.emit('message:deleted', payload.old.id);

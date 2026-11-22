@@ -123,7 +123,16 @@ export function fmtDuration(totalSec) {
   return `${m}:${String(s % 60).padStart(2, '0')}`;
 }
 
-// Короткий звук уведомления (без файлов, через WebAudio)
+// ---------- пользовательские настройки (localStorage) ----------
+export function getPrefs() {
+  try { return JSON.parse(localStorage.getItem('msp_prefs') || '{}') || {}; }
+  catch { return {}; }
+}
+export function setPrefs(patch) {
+  localStorage.setItem('msp_prefs', JSON.stringify({ ...getPrefs(), ...patch }));
+}
+
+// Красивый звук уведомления (без файлов, через WebAudio)
 let audioCtx = null;
 export function ensureAudio() {
   if (!audioCtx) {
@@ -132,6 +141,7 @@ export function ensureAudio() {
   if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
 }
 export function beep() {
+  if (getPrefs().sound === false) return;
   try {
     ensureAudio();
     if (!audioCtx) return;

@@ -1,9 +1,10 @@
-// Список чатов, поиск людей, модалки профиля и создания группы
-import { state, dbApi, storeApi, authApi, otherMember, chatTitleFor } from './api.js';
+// Список чатов, поиск людей, создание группы
+import { state, dbApi, otherMember, chatTitleFor } from './api.js';
 import {
   qs, esc, el, bus, toast, avatarHTML, fmtListTime,
-  relLastSeen, debounce, confirmDialog,
+  relLastSeen, debounce,
 } from './utils.js';
+import { openSettingsModal } from './settings.js';
 
 let searchMode = false;
 let searchResults = [];
@@ -27,12 +28,17 @@ export function initChatListUI() {
     renderChatList();
   }, 250));
 
-  qs('#profile-btn').addEventListener('click', openProfileModal);
-  qs('#new-group-btn').addEventListener('click', openGroupModal);
-  qs('#logout-btn').addEventListener('click', async () => {
-    const ok = await confirmDialog({ title: 'Выйти из аккаунта?', text: '', okLabel: 'Выйти', danger: false });
-    if (ok) await authApi.signOut();
+  qs('#profile-btn').addEventListener('click', openSettingsModal);
+  qs('#settings-btn').addEventListener('click', openSettingsModal);
+  qs('#saved-btn').addEventListener('click', async () => {
+    try {
+      const chatId = await dbApi.getOrCreateSavedChat();
+      bus.emit('open-chat', chatId);
+    } catch (e) {
+      toast('Не получилось: ' + e.message);
+    }
   });
+  qs('#new-group-btn').addEventListener('click', openGroupModal);
 }
 
 // ---------- рендер списка чатов ----------
@@ -77,14 +83,20 @@ export function renderChatList() {
     </div>`));
     return;
   }
+  if (!chats.some((c) => c.is_saved)) {
+    // подсказка про Избранное
+    list.appendChild(el(`<div class="saved-tip">
+      💡 Есть кнопка 🔖 — твой личный чат «Избранное»: заметки, ссылки, файлы. Виден только тебе.
+    </div>`));
+  }
   chats.forEach((c) => list.appendChild(chatRowEl(c, false)));
 }
 
 function chatRowEl(chat, inSearch) {
   const meId = state.me.id;
   const other = otherMember(chat, meId);
-  const title = chatTitleFor(chat, meId);
-  const isOnline = chat.type === 'direct' && other && state.online.has(other.id);
+  const title = chat.is_saved ? '🔖 Избранное' : chatTitleFor(chat, meId);
+  const isOnline = !chat.is_saved && chat.type === 'direct' && other && state.online.has(other.id);
   const unread = state.unread.get(chat.id) || 0;
   const mine = chat.last_message_sender === meId;
   let preview = chat.last_message_text || (chat.type === 'group' ? 'Группа создана' : 'Напиши первое сообщение');
@@ -92,7 +104,9 @@ function chatRowEl(chat, inSearch) {
   const active = state.activeChatId === chat.id ? ' active' : '';
   const row = el(`
     <div class="chat-row${active}" data-chat="${chat.id}">
-      ${avatarHTML(chat.type === 'group' ? chat.avatar_url : other?.avatar_url, title, 'md', false)}
+      ${chat.is_saved
+        ? '<span class="avatar md saved-av">🔖</span>'
+        : avatarHTML(chat.type === 'group' ? chat.avatar_url : other?.avatar_url, title, 'md', false)}
       <div class="chat-row-main">
         <div class="chat-row-top">
           <span class="chat-row-title">${esc(title)}</span>
@@ -134,82 +148,6 @@ function personRowEl(p) {
     }
   });
   return row;
-}
-
-// ---------- модалка: мой профиль ----------
-export function openProfileModal() {
-  const me = state.me;
-  const m = el(`
-    <div class="modal-overlay">
-      <div class="modal">
-        <h3>Мой профиль</h3>
-        <div class="avatar-edit">
-          <div id="pf-avatar-preview">${avatarHTML(me.avatar_url, me.display_name || me.nickname, 'xl')}</div>
-          <div>
-            <button class="btn ghost sm" id="pf-avatar-btn">Сменить аватар</button>
-            <div class="field-hint">PNG/JPG/WEBP, до 5 МБ</div>
-          </div>
-          <input type="file" id="pf-avatar-file" accept="image/*" class="hidden">
-        </div>
-        <label class="field">Имя (видно в чатах)
-          <input id="pf-display" type="text" maxlength="40" value="${esc(me.display_name)}" placeholder="Как тебя зовут">
-        </label>
-        <label class="field">Ник (по нему тебя найдут)
-          <input id="pf-nick" type="text" maxlength="20" value="${esc(me.nickname)}" placeholder="ник">
-        </label>
-        <label class="field">О себе
-          <input id="pf-bio" type="text" maxlength="120" value="${esc(me.bio)}" placeholder="Пара слов">
-        </label>
-        <div class="form-error" id="pf-error"></div>
-        <div class="modal-actions">
-          <button class="btn ghost" data-act="close">Закрыть</button>
-          <button class="btn primary" id="pf-save">Сохранить</button>
-        </div>
-      </div>
-    </div>`);
-
-  document.querySelector('#modal-root').appendChild(m);
-  const close = () => m.remove();
-  m.addEventListener('click', (e) => { if (e.target === m || e.target.closest('[data-act=close]')) close(); });
-
-  const fileInput = qs('#pf-avatar-file', m);
-  let newAvatarUrl = null;
-  qs('#pf-avatar-btn', m).addEventListener('click', () => fileInput.click());
-  fileInput.addEventListener('change', async () => {
-    const file = fileInput.files[0];
-    if (!file) return;
-    try {
-      toast('Загружаю аватар…');
-      newAvatarUrl = await storeApi.uploadAvatar(file);
-      qs('#pf-avatar-preview', m).innerHTML = avatarHTML(newAvatarUrl, me.nickname, 'xl');
-    } catch (e) {
-      qs('#pf-error', m).textContent = e.message;
-    }
-  });
-
-  qs('#pf-save', m).addEventListener('click', async () => {
-    const nick = qs('#pf-nick', m).value.trim();
-    if (!/^[A-Za-z0-9_А-Яа-яЁё]{3,20}$/.test(nick)) {
-      qs('#pf-error', m).textContent = 'Ник: 3–20 символов, без пробелов.';
-      return;
-    }
-    try {
-      const patch = {
-        nickname: nick,
-        display_name: qs('#pf-display', m).value.trim(),
-        bio: qs('#pf-bio', m).value.trim(),
-      };
-      if (newAvatarUrl) patch.avatar_url = newAvatarUrl;
-      await dbApi.updateMe(patch);
-      renderChatList();
-      bus.emit('chat-header-refresh');
-      close();
-      toast('Профиль сохранён ✓');
-    } catch (e) {
-      qs('#pf-error', m).textContent = e.message.includes('duplicate') || e.message.includes('unique')
-        ? 'Такой ник уже занят.' : e.message;
-    }
-  });
 }
 
 // ---------- модалка: новая группа ----------

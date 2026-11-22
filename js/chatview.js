@@ -196,6 +196,7 @@ function messageEl(m, chat, showDaySep) {
       .some((x) => new Date(x.last_read_at) >= new Date(m.created_at));
     ticks = `<span class="msg-ticks${othersRead ? ' read' : ''}">${othersRead ? '✓✓' : '✓'}</span>`;
   }
+  const edited = m.edited_at ? '<span class="msg-edited">изм.</span>' : '';
 
   const author = (!own && isGroup)
     ? `<div class="msg-author">${avatarHTML(sender?.avatar_url, name, 'xs')}${esc(name)}</div>` : '';
@@ -203,7 +204,8 @@ function messageEl(m, chat, showDaySep) {
   const actions = `
     <div class="msg-actions">
       <button class="msg-act" data-act="reply" title="Ответить">↩</button>
-      <button class="msg-act" data-act="copy" title="Копировать">⧉</button>
+      <button class="msg-act" data-act="fav" title="В избранное">🔖</button>
+      ${own && !m.attachment_type ? '<button class="msg-act" data-act="edit" title="Изменить">✏️</button>' : ''}
       ${own ? '<button class="msg-act danger" data-act="del" title="Удалить">🗑</button>' : ''}
     </div>`;
 
@@ -212,7 +214,7 @@ function messageEl(m, chat, showDaySep) {
       ${author}
       <div class="msg${own ? ' out' : ' in'}">
         ${quote}${content || '<div class="msg-text muted">Пустое сообщение</div>'}
-        <div class="msg-meta"><span class="msg-time">${fmtTime(m.created_at)}</span>${ticks}</div>
+        <div class="msg-meta"><span class="msg-time">${fmtTime(m.created_at)}</span>${edited}${ticks}</div>
         ${actions}
       </div>
     </div>`);
@@ -303,6 +305,14 @@ export function onMessageDeleted(id) {
   renderMessages(false);
 }
 
+export function onMessageUpdated(m) {
+  if (m.chat_id !== state.activeChatId) return;
+  const idx = msgs.findIndex((x) => x.id === m.id);
+  if (idx === -1) return;
+  msgs[idx] = m;
+  renderMessages(false);
+}
+
 export function onMembersUpdated() {
   if (!state.activeChatId) return;
   renderMessages(false);
@@ -366,7 +376,54 @@ function doAction(act, msgId) {
       .then(() => toast('Скопировано ✓'))
       .catch(() => toast('Не удалось скопировать'));
   }
+  if (act === 'fav') {
+    dbApi.saveToFavorites(m)
+      .then(() => toast('Сохранено в «Избранное» 🔖'))
+      .catch((e) => toast('Ошибка: ' + e.message));
+  }
+  if (act === 'edit') openEditModal(m);
   if (act === 'del') handleDelete(msgId);
+}
+
+// ---------- редактирование своего сообщения ----------
+
+function openEditModal(m) {
+  const overlay = el(`
+    <div class="modal-overlay">
+      <div class="modal">
+        <h3>Изменить сообщение</h3>
+        <textarea id="edit-text" rows="4" maxlength="4000">${esc(m.body)}</textarea>
+        <div class="form-error" id="edit-error"></div>
+        <div class="modal-actions">
+          <button class="btn ghost" data-act="cancel">Отмена</button>
+          <button class="btn primary" id="edit-save">Сохранить</button>
+        </div>
+      </div>
+    </div>`);
+  document.querySelector('#modal-root').appendChild(overlay);
+  const close = () => overlay.remove();
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay || e.target.closest('[data-act=cancel]')) close();
+  });
+  overlay.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      qs('#edit-save', overlay).click();
+    }
+  });
+  qs('#edit-save', overlay).addEventListener('click', async () => {
+    const body = qs('#edit-text', overlay).value.trim();
+    if (!body) { qs('#edit-error', overlay).textContent = 'Текст не может быть пустым.'; return; }
+    try {
+      const updated = await dbApi.editMessage(m.id, body);
+      close();
+      onMessageUpdated(updated);
+      toast('Сообщение изменено ✓');
+    } catch (e) {
+      qs('#edit-error', overlay).textContent = e.message;
+    }
+  });
+  setTimeout(() => { qs('#edit-text', overlay).focus(); }, 50);
 }
 
 function openMsgMenu(x, y, msgId) {
@@ -377,7 +434,9 @@ function openMsgMenu(x, y, msgId) {
   const menu = el(`
     <div class="msg-menu" style="left:0;top:0">
       <button data-act="reply">↩ Ответить</button>
+      <button data-act="fav">🔖 В избранное</button>
       <button data-act="copy">⧉ Копировать</button>
+      ${own && !m.attachment_type ? '<button data-act="edit">✏️ Изменить</button>' : ''}
       ${own ? '<button class="danger" data-act="del">🗑 Удалить</button>' : ''}
     </div>`);
   document.body.appendChild(menu);
@@ -499,6 +558,25 @@ async function openChatInfo() {
   if (!chat) return;
   const meId = state.me.id;
   const isOwner = chat.created_by === meId;
+
+  if (chat.is_saved) {
+    const m = el(`
+      <div class="modal-overlay">
+        <div class="modal center">
+          <div class="avatar xl saved-av" style="font-size:38px">🔖</div>
+          <h3>Избранное</h3>
+          <p class="modal-text">Твой личный чат: заметки, ссылки, голосовые и файлы.<br>Виден только тебе — и синхронизируется между устройствами.</p>
+          <div class="modal-actions center-actions">
+            <button class="btn ghost" data-act="close">Закрыть</button>
+          </div>
+        </div>
+      </div>`);
+    document.querySelector('#modal-root').appendChild(m);
+    m.addEventListener('click', (e) => {
+      if (e.target === m || e.target.closest('[data-act=close]')) m.remove();
+    });
+    return;
+  }
 
   if (chat.type === 'direct') {
     const other = otherMember(chat);

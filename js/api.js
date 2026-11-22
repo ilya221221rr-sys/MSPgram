@@ -89,6 +89,7 @@ export function otherMember(chat, meId = state.me?.id) {
 }
 
 export function chatTitleFor(chat, meId = state.me?.id) {
+  if (chat.is_saved) return 'Избранное';
   if (chat.type === 'group') return chat.title || 'Группа';
   const other = otherMember(chat, meId);
   return other ? (other.display_name || `@${other.nickname}`) : 'Чат';
@@ -226,6 +227,39 @@ export const dbApi = {
     const { data, error } = await _sb.rpc('get_or_create_direct_chat', { other_user: userId });
     if (error) handleErr(error, 'Не удалось открыть чат');
     if (!state.chats.has(data)) await this.loadChatRow(data);
+    return data;
+  },
+
+  async getOrCreateSavedChat() {
+    const { data, error } = await _sb.rpc('get_or_create_saved_chat');
+    if (error) handleErr(error, 'Не удалось открыть «Избранное»');
+    if (!state.chats.has(data)) await this.loadChatRow(data);
+    return data;
+  },
+
+  // Скопировать сообщение в «Избранное» (как пересылка себе)
+  async saveToFavorites(m) {
+    const chatId = await this.getOrCreateSavedChat();
+    const row = {
+      chat_id: chatId,
+      sender_id: state.me.id,
+      body: m.body || '',
+      attachment_url: m.attachment_url || '',
+      attachment_type: m.attachment_type || '',
+      attachment_name: m.attachment_name || '',
+      attachment_size: m.attachment_size ?? null,
+      duration_ms: m.duration_ms ?? null,
+    };
+    const { data, error } = await _sb.from('messages').insert(row).select().single();
+    if (error) handleErr(error, 'Не удалось сохранить в «Избранное»');
+    return data;
+  },
+
+  async editMessage(id, body) {
+    const { data, error } = await _sb.from('messages')
+      .update({ body, edited_at: new Date().toISOString() })
+      .eq('id', id).select().single();
+    if (error) handleErr(error, 'Не удалось изменить сообщение');
     return data;
   },
 
