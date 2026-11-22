@@ -716,3 +716,25 @@ input::placeholder, textarea::placeholder { color: #5c688a; }
 .accent-chip span { width: 18px; height: 18px; border-radius: 50%; display: inline-block; }
 .accent-chip.sel, .size-chip.sel { border-color: var(--accent); color: var(--text); }
 .accent-chip:hover, .size-chip:hover { color: var(--text); }
+
+/* ---------- кнопка «вниз» (как в Telegram) ---------- */
+.chat-view { position: relative; }
+.scroll-down {
+  position: absolute; right: 18px; bottom: 96px; z-index: 5;
+  width: 44px; height: 44px; border-radius: 50%;
+  border: 1px solid var(--line); cursor: pointer;
+  background: var(--panel); color: var(--text); font-size: 18px;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; pointer-events: none; transform: translateY(8px);
+  transition: opacity .18s, transform .18s;
+  box-shadow: 0 6px 22px rgba(0,0,0,.45);
+}
+.scroll-down.visible { opacity: 1; pointer-events: auto; transform: none; }
+.scroll-down:hover { background: var(--hover); }
+.sd-badge {
+  position: absolute; top: -6px; right: -4px;
+  min-width: 18px; height: 18px; padding: 0 5px;
+  border-radius: 9px; background: var(--danger); color: #fff;
+  font-size: 10.5px; font-weight: 700;
+  display: inline-flex; align-items: center; justify-content: center;
+}

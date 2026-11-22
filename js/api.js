@@ -89,10 +89,17 @@ export function otherMember(chat, meId = state.me?.id) {
 }
 
 export function chatTitleFor(chat, meId = state.me?.id) {
-  if (chat.is_saved) return 'Избранное';
+  if (isSavedChat(chat)) return 'Избранное';
   if (chat.type === 'group') return chat.title || 'Группа';
   const other = otherMember(chat, meId);
   return other ? (other.display_name || `@${other.nickname}`) : 'Чат';
+}
+
+// Чат «Избранное»: явный флаг или (без миграции) обычный чат с одним участником — мной
+export function isSavedChat(chat) {
+  if (!chat) return false;
+  if (chat.is_saved === true) return true;
+  return chat.type === 'direct' && Array.isArray(chat.members) && chat.members.length === 1;
 }
 
 export function memberProfile(chat, userId) {
@@ -134,7 +141,18 @@ export const dbApi = {
       .update(patch).eq('id', state.me.id).select().single();
     if (error) handleErr(error, 'Не удалось сохранить профиль');
     state.me = data;
+    // мгновенно отражаем новый профиль во всех открытых чатах (без перезагрузки)
+    for (const c of state.chats.values()) {
+      const mem = (c.members || []).find((x) => x.user_id === state.me.id);
+      if (mem && mem.profiles) {
+        mem.profiles.nickname = data.nickname;
+        mem.profiles.display_name = data.display_name;
+        mem.profiles.bio = data.bio;
+        mem.profiles.avatar_url = data.avatar_url;
+      }
+    }
     bus.emit('me');
+    bus.emit('profile-synced');
     return data;
   },
 
@@ -231,10 +249,50 @@ export const dbApi = {
   },
 
   async getOrCreateSavedChat() {
-    const { data, error } = await _sb.rpc('get_or_create_saved_chat');
-    if (error) handleErr(error, 'Не удалось открыть «Избранное»');
-    if (!state.chats.has(data)) await this.loadChatRow(data);
-    return data;
+    // 1) штатный путь — функция из миграции №3
+    try {
+      const { data, error } = await _sb.rpc('get_or_create_saved_chat');
+      if (!error && data) {
+        if (!state.chats.has(data)) await this.loadChatRow(data);
+        return data;
+      }
+      const msg = String(error?.message || '');
+      // дальше разбираем только «функция не найдена» (миграция не запущена)
+      if (!/not found|schema cache|42883|404/i.test(msg)) handleErr(error, 'Не удалось открыть «Избранное»');
+    } catch (e) {
+      if (!/not found|schema cache|42883|404/i.test(String(e.message || ''))) throw e;
+    }
+
+    // 2) фолбэк — ищем уже созданный чат «на одного»
+    const local = [...state.chats.values()].find(isSavedChat);
+    if (local) return local.id;
+
+    // 3) создаём: сперва с флагом is_saved, если колонки нет — обычный чат
+    let created = null;
+    let err = null;
+    {
+      const r = await _sb.from('chats')
+        .insert({ type: 'direct', is_saved: true, title: 'Избранное', created_by: state.me.id })
+        .select().single();
+      created = r.data;
+      err = r.error;
+    }
+    if (err && /is_saved|42703|could not find/i.test(String(err.message || ''))) {
+      const r = await _sb.from('chats')
+        .insert({ type: 'direct', title: 'Избранное', created_by: state.me.id })
+        .select().single();
+      created = r.data;
+      err = r.error;
+    }
+    if (err || !created) handleErr(err, 'Не удалось создать «Избранное»');
+
+    // участник — только я (если ещё не добавлен)
+    await _sb.from('chat_members').upsert(
+      { chat_id: created.id, user_id: state.me.id, role: 'owner' },
+      { onConflict: 'chat_id,user_id' },
+    );
+    await this.loadChatRow(created.id);
+    return created.id;
   },
 
   // Скопировать сообщение в «Избранное» (как пересылка себе)

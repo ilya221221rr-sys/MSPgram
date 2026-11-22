@@ -1,5 +1,7 @@
 // Service Worker: офлайн-кэш интерфейса (PWA)
-const VERSION = 'mspgram-v6';
+// Стратегия: сеть — всегда первая (свежий код гарантированно),
+// кэш используется только когда интернета нет.
+const VERSION = 'mspgram-v7';
 const PRECACHE = [
   './',
   './index.html',
@@ -35,30 +37,20 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(req.url);
   if (url.origin !== location.origin) return; // запросы к Supabase — мимо кэша
 
-  // навигация и конфиг: сначала сеть, потом кэш
-  if (req.mode === 'navigate' || url.pathname.endsWith('/js/config.js')) {
-    event.respondWith((async () => {
-      try {
-        const fresh = await fetch(req);
+  // Всё своё отдаём «сначала сеть»: код всегда свежий, офлайн — из кэша
+  event.respondWith((async () => {
+    try {
+      const fresh = await fetch(req);
+      if (fresh && fresh.ok) {
         const cache = await caches.open(VERSION);
         cache.put(req, fresh.clone());
-        return fresh;
-      } catch {
-        const cache = await caches.open(VERSION);
-        return (await cache.match(req)) || (await cache.match('./index.html')) || Response.error();
       }
-    })());
-    return;
-  }
-
-  // остальная статика: сначала кэш, обновление в фоне
-  event.respondWith((async () => {
-    const cache = await caches.open(VERSION);
-    const cached = await cache.match(req);
-    const fresh = fetch(req).then((res) => {
-      if (res && res.ok) cache.put(req, res.clone());
-      return res;
-    }).catch(() => cached || Response.error());
-    return cached || fresh;
+      return fresh;
+    } catch {
+      const cache = await caches.open(VERSION);
+      return (await cache.match(req, { ignoreSearch: true }))
+        || (await cache.match('./index.html'))
+        || Response.error();
+    }
   })());
 });

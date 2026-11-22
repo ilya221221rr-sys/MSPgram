@@ -1,5 +1,5 @@
 // Список чатов, поиск людей, создание группы
-import { state, dbApi, otherMember, chatTitleFor } from './api.js';
+import { state, dbApi, otherMember, chatTitleFor, isSavedChat } from './api.js';
 import {
   qs, esc, el, bus, toast, avatarHTML, fmtListTime,
   relLastSeen, debounce,
@@ -83,7 +83,7 @@ export function renderChatList() {
     </div>`));
     return;
   }
-  if (!chats.some((c) => c.is_saved)) {
+  if (!chats.some((c) => isSavedChat(c))) {
     // подсказка про Избранное
     list.appendChild(el(`<div class="saved-tip">
       💡 Есть кнопка 🔖 — твой личный чат «Избранное»: заметки, ссылки, файлы. Виден только тебе.
@@ -95,8 +95,9 @@ export function renderChatList() {
 function chatRowEl(chat, inSearch) {
   const meId = state.me.id;
   const other = otherMember(chat, meId);
-  const title = chat.is_saved ? '🔖 Избранное' : chatTitleFor(chat, meId);
-  const isOnline = !chat.is_saved && chat.type === 'direct' && other && state.online.has(other.id);
+  const saved = isSavedChat(chat);
+  const title = saved ? '🔖 Избранное' : chatTitleFor(chat, meId);
+  const isOnline = !saved && chat.type === 'direct' && other && state.online.has(other.id);
   const unread = state.unread.get(chat.id) || 0;
   const mine = chat.last_message_sender === meId;
   let preview = chat.last_message_text || (chat.type === 'group' ? 'Группа создана' : 'Напиши первое сообщение');
@@ -104,7 +105,7 @@ function chatRowEl(chat, inSearch) {
   const active = state.activeChatId === chat.id ? ' active' : '';
   const row = el(`
     <div class="chat-row${active}" data-chat="${chat.id}">
-      ${chat.is_saved
+      ${saved
         ? '<span class="avatar md saved-av">🔖</span>'
         : avatarHTML(chat.type === 'group' ? chat.avatar_url : other?.avatar_url, title, 'md', false)}
       <div class="chat-row-main">

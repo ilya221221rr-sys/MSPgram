@@ -1,5 +1,5 @@
 // Окно чата: сообщения, медиа, ответы, голосовые и видеосообщения
-import { state, dbApi, storeApi, getSb, otherMember, memberProfile, chatTitleFor } from './api.js';
+import { state, dbApi, storeApi, getSb, otherMember, memberProfile, chatTitleFor, isSavedChat } from './api.js';
 import {
   qs, qsa, esc, el, bus, toast, avatarHTML, fmtTime, fmtDaySep, sameDayKey,
   relLastSeen, fmtBytes, fmtDuration, confirmDialog, debounce, beep,
@@ -16,6 +16,7 @@ let replyState = null;      // сообщение, на которое отве�
 let currentAudio = null;    // единственное активное аудио
 
 const MSG_LIMIT = 50;
+let pendingBelow = 0;       // новых сообщений, пока ты прокрутил(а) вверх
 const MEDIA_PREVIEW = {
   image: '📷 Фото', video: '🎥 Видеосообщение', voice: '🎤 Голосовое сообщение', file: '📎 Файл',
 };
@@ -62,10 +63,38 @@ export async function openChat(chatId) {
   }
 
   joinTypingChannel(chatId);
+  pendingBelow = 0;
+  updateScrollBtn();
   if (document.hasFocus() && document.visibilityState === 'visible') {
     dbApi.markRead(chatId);
   }
   bus.emit('chat-opened', chatId);
+}
+
+// ---------- плавающая кнопка «вниз» (как в Telegram) ----------
+
+function isNearBottom() {
+  const box = qs('#messages');
+  return box.scrollHeight - box.scrollTop - box.clientHeight < 120;
+}
+
+function updateScrollBtn() {
+  const btn = qs('#scroll-down');
+  if (!btn) return;
+  const far = !isNearBottom() || pendingBelow > 0;
+  btn.classList.toggle('visible', far);
+  const badge = btn.querySelector('.sd-badge');
+  if (badge) {
+    badge.textContent = pendingBelow > 99 ? '99+' : (pendingBelow || '');
+    badge.classList.toggle('hidden', !pendingBelow);
+  }
+}
+
+function scrollChatToBottom(smooth = true) {
+  const box = qs('#messages');
+  box.scrollTo({ top: box.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
+  pendingBelow = 0;
+  updateScrollBtn();
 }
 
 export function closeChat() {
@@ -97,8 +126,11 @@ function renderHeader() {
   else sub = `${(chat.members || []).length} участник${plural((chat.members || []).length)}`;
 
   const info = qs('#chat-head-info');
+  const headAv = isSavedChat(chat)
+    ? '<span class="avatar md saved-av">🔖</span>'
+    : avatarHTML(chat.type === 'group' ? chat.avatar_url : other?.avatar_url, chatTitleFor(chat), 'md', false);
   info.innerHTML = `
-    ${avatarHTML(chat.type === 'group' ? chat.avatar_url : other?.avatar_url, chatTitleFor(chat), 'md', false)}
+    ${headAv}
     <div class="chat-head-text">
       <div class="chat-head-title">${esc(chatTitleFor(chat))}</div>
       <div class="chat-head-sub ${online ? 'on' : ''}">${esc(sub)}</div>
@@ -249,6 +281,7 @@ function renderMessages(scrollToBottom = false) {
 
   renderTyping();
   if (scrollToBottom || nearBottom) box.scrollTop = box.scrollHeight;
+  updateScrollBtn();
 }
 
 async function loadEarlier() {
@@ -291,10 +324,16 @@ export function onNewMessage(m) {
   msgs.push(m);
   msgs.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
   const chat = state.chats.get(state.activeChatId);
+  const box = qs('#messages');
+  const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 120;
   renderMessages(m.sender_id === state.me.id || m.body || m.attachment_type);
   if (m.sender_id !== state.me.id && document.hasFocus()) {
     dbApi.markRead(m.chat_id);
     beep();
+  }
+  if (m.sender_id !== state.me.id && !nearBottom) {
+    pendingBelow += 1;
+    updateScrollBtn();
   }
 }
 
@@ -559,7 +598,7 @@ async function openChatInfo() {
   const meId = state.me.id;
   const isOwner = chat.created_by === meId;
 
-  if (chat.is_saved) {
+  if (isSavedChat(chat)) {
     const m = el(`
       <div class="modal-overlay">
         <div class="modal center">
@@ -805,6 +844,18 @@ export function initChatViewUI() {
   qs('#back-btn').addEventListener('click', closeChat);
   qs('#chat-info-btn').addEventListener('click', openChatInfo);
   qs('#send-btn').addEventListener('click', sendText);
+
+  // кнопка «вниз» + отслеживание прокрутки
+  qs('#scroll-down').addEventListener('click', () => scrollChatToBottom());
+  qs('#messages').addEventListener('scroll', updateScrollBtn, { passive: true });
+
+  // двойной клик по сообщению — быстрый ответ (как в Telegram)
+  qs('#messages').addEventListener('dblclick', (e) => {
+    const row = e.target.closest('.msg-row');
+    if (row && !e.target.closest('a, button, img, video, .voice')) {
+      doAction('reply', row.dataset.id);
+    }
+  });
 
   const input = qs('#msg-input');
   input.addEventListener('keydown', (e) => {
