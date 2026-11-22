@@ -126,11 +126,19 @@
     </div>
 
     <section id="chat-view" class="chat-view hidden">
-      <header class="chat-head">
+      <header class="chat-head" id="chat-head">
         <button id="back-btn" class="icon-btn back" title="Назад">←</button>
         <div id="chat-head-info" class="chat-head-info"></div>
+        <button id="channel-pill" class="channel-pill hidden" title="Каналы"></button>
+        <button id="chat-search-btn" class="icon-btn" title="Поиск по сообщениям">🔍</button>
         <button id="chat-info-btn" class="icon-btn" title="Информация">⋯</button>
       </header>
+      <div id="pinned-bar" class="pinned-bar hidden"></div>
+      <div id="search-row" class="search-row hidden">
+        <input id="chat-search" type="search" placeholder="Искать в этом чате…" autocomplete="off">
+        <button id="search-close" class="icon-btn" title="Скрыть">✕</button>
+        <div id="chat-search-results" class="chat-search-results hidden"></div>
+      </div>
       <div id="messages" class="messages"></div>
       <button id="scroll-down" class="scroll-down" title="Прокрутить вниз">↓<span class="sd-badge hidden"></span></button>
       <div class="composer">

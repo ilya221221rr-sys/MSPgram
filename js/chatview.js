@@ -1,26 +1,31 @@
-// Окно чата: сообщения, медиа, ответы, голосовые и видеосообщения
+// Окно чата 2.0: каналы серверов, реакции, закрепы, пересылка, поиск, черновики
 import { state, dbApi, storeApi, getSb, otherMember, memberProfile, chatTitleFor, isSavedChat } from './api.js';
 import {
   qs, qsa, esc, el, bus, toast, avatarHTML, fmtTime, fmtDaySep, sameDayKey,
-  relLastSeen, fmtBytes, fmtDuration, confirmDialog, debounce, beep,
+  relLastSeen, fmtBytes, fmtDuration, confirmDialog, debounce, beep, getPrefs, setPrefs,
 } from './utils.js';
 import { recordVoice, recordVideo, canRecordVoice, canRecordVideo, extOf } from './media.js';
 
-let msgs = [];              // сообщения открытого чата
+let msgs = [];
 let msgIds = new Set();
 let hasMore = false;
-let typingChan = null;      // канал «печатает…»
+let typingChan = null;
 let lastTypingSent = 0;
 let sending = false;
-let replyState = null;      // сообщение, на которое отвечаем
-let currentAudio = null;    // единственное активное аудио
+let replyState = null;
+let editState = null;        // сообщение в режиме правки
+let currentAudio = null;
+let pendingBelow = 0;
+let searchOpen = false;
+
+// реакции: msgId -> Map(emoji -> Set(userId))
+const reactions = new Map();
 
 const MSG_LIMIT = 50;
-let pendingBelow = 0;       // новых сообщений, пока ты прокрутил(а) вверх
 const MEDIA_PREVIEW = {
   image: '📷 Фото', video: '🎥 Видеосообщение', voice: '🎤 Голосовое сообщение', file: '📎 Файл',
 };
-const TYPE_ICON = { image: '📷', video: '🎥', voice: '🎤', file: '📎' };
+const QUICK_EMOJI = ['👍', '❤️', '🔥', '😂', '😮', '😢', '🎉'];
 
 function previewOf(m) {
   return m.body || MEDIA_PREVIEW[m.attachment_type] || '';
@@ -28,7 +33,7 @@ function previewOf(m) {
 
 // ================== ОТКРЫТИЕ / ЗАКРЫТИЕ ==================
 
-export async function openChat(chatId) {
+export async function openChat(chatId, opts = {}) {
   const chat = state.chats.get(chatId);
   if (!chat) return;
   state.activeChatId = chatId;
@@ -41,14 +46,31 @@ export async function openChat(chatId) {
   msgs = [];
   msgIds = new Set();
   hasMore = false;
+  reactions.clear();
   state.unread.delete(chatId);
   clearReply();
+  setSearchOpen(false);
   import('./chatlist.js').then((m) => m.renderChatList());
 
+  // каналы сервера
+  if (dbApi.isServerChat(chat)) {
+    try {
+      await dbApi.loadChannels(chatId);
+      if (!chat._channelId && chat._channels?.length) {
+        chat._channelId = chat._channels[0].id;
+      }
+    } catch (e) { console.warn('channels:', e.message); }
+  } else {
+    chat._channels = null;
+    chat._channelId = null;
+  }
+
   renderHeader();
+  renderPinnedBar();
   const box = qs('#messages');
   box.innerHTML = '<div class="loader">Загружаю…</div>';
   box.scrollTop = 0;
+  restoreDraft();
 
   try {
     const loaded = await dbApi.loadMessages(chatId, MSG_LIMIT);
@@ -56,6 +78,7 @@ export async function openChat(chatId) {
     msgs = loaded;
     msgs.forEach((m) => msgIds.add(m.id));
     hasMore = msgs.length >= MSG_LIMIT;
+    await loadReactionsFor(msgs.map((m) => m.id));
     renderMessages(true);
   } catch (e) {
     box.innerHTML = `<div class="list-empty">${esc(e.message)}</div>`;
@@ -71,33 +94,8 @@ export async function openChat(chatId) {
   bus.emit('chat-opened', chatId);
 }
 
-// ---------- плавающая кнопка «вниз» (как в Telegram) ----------
-
-function isNearBottom() {
-  const box = qs('#messages');
-  return box.scrollHeight - box.scrollTop - box.clientHeight < 120;
-}
-
-function updateScrollBtn() {
-  const btn = qs('#scroll-down');
-  if (!btn) return;
-  const far = !isNearBottom() || pendingBelow > 0;
-  btn.classList.toggle('visible', far);
-  const badge = btn.querySelector('.sd-badge');
-  if (badge) {
-    badge.textContent = pendingBelow > 99 ? '99+' : (pendingBelow || '');
-    badge.classList.toggle('hidden', !pendingBelow);
-  }
-}
-
-function scrollChatToBottom(smooth = true) {
-  const box = qs('#messages');
-  box.scrollTo({ top: box.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
-  pendingBelow = 0;
-  updateScrollBtn();
-}
-
 export function closeChat() {
+  saveDraft();
   state.activeChatId = null;
   document.body.classList.remove('chat-open');
   qs('#chat-view').classList.add('hidden');
@@ -107,34 +105,42 @@ export function closeChat() {
   clearReply();
 }
 
-function renderChatListBadge() {
-  import('./chatlist.js').then((m) => m.renderChatList());
-}
-
-// ================== ЗАГОЛОВОК ЧАТА ==================
+// ================== ЗАГОЛОВОК: каналы + поиск ==================
 
 function renderHeader() {
   const chat = state.chats.get(state.activeChatId);
   if (!chat) return;
   const other = otherMember(chat);
   const isTyping = typingText(chat.id);
-  const online = chat.type === 'direct' && other && state.online.has(other.id);
+  const saved = isSavedChat(chat);
+  const online = !saved && chat.type === 'direct' && other && state.online.has(other.id);
 
   let sub;
   if (isTyping) sub = isTyping;
+  else if (saved) sub = 'только для тебя';
   else if (chat.type === 'direct') sub = relLastSeen(other?.last_seen, online);
   else sub = `${(chat.members || []).length} участник${plural((chat.members || []).length)}`;
 
-  const info = qs('#chat-head-info');
-  const headAv = isSavedChat(chat)
+  const headAv = saved
     ? '<span class="avatar md saved-av">🔖</span>'
     : avatarHTML(chat.type === 'group' ? chat.avatar_url : other?.avatar_url, chatTitleFor(chat), 'md', false);
+
+  const info = qs('#chat-head-info');
   info.innerHTML = `
     ${headAv}
     <div class="chat-head-text">
       <div class="chat-head-title">${esc(chatTitleFor(chat))}</div>
       <div class="chat-head-sub ${online ? 'on' : ''}">${esc(sub)}</div>
     </div>`;
+
+  // пилюля канала (для серверов)
+  const pill = qs('#channel-pill');
+  const isServer = dbApi.isServerChat(chat);
+  pill.classList.toggle('hidden', !isServer);
+  if (isServer) {
+    const cur = (chat._channels || []).find((c) => c.id === chat._channelId);
+    pill.innerHTML = `<span class="ch-hash">#</span>${esc(cur ? cur.name : 'общий')} <span class="ch-caret">▾</span>`;
+  }
 }
 
 function plural(n) {
@@ -142,6 +148,136 @@ function plural(n) {
   if (m10 === 1 && m100 !== 11) return 'ь';
   if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return 'я';
   return 'ей';
+}
+
+// ---------- выпадающий список каналов ----------
+function toggleChannelMenu() {
+  const chat = state.chats.get(state.activeChatId);
+  if (!chat || !dbApi.isServerChat(chat)) return;
+  const existing = qs('.channel-menu');
+  if (existing) { existing.remove(); return; }
+  const isAdmin = chat.created_by === state.me.id
+    || (chat.members || []).some((x) => x.user_id === state.me.id && ['owner', 'admin'].includes(x.role));
+
+  const menu = el(`
+    <div class="channel-menu">
+      <div class="channel-menu-title">Каналы</div>
+      ${(chat._channels || []).map((c) => `
+        <div class="channel-item ${c.id === chat._channelId ? 'cur' : ''}" data-ch="${c.id}">
+          <span class="ch-hash">#</span>${esc(c.name)}
+          ${isAdmin && c.name !== 'общий' ? `<button class="ch-del" data-delch="${c.id}" title="Удалить канал">✕</button>` : ''}
+        </div>`).join('')}
+      ${isAdmin ? '<div class="channel-item add"><span class="ch-hash">＋</span>Создать канал</div>' : ''}
+    </div>`);
+  qs('#chat-head').appendChild(menu);
+
+  menu.addEventListener('click', async (e) => {
+    const delBtn = e.target.closest('[data-delch]');
+    if (delBtn) {
+      e.stopPropagation();
+      const ok = await confirmDialog({ title: 'Удалить канал?', text: 'Все его сообщения исчезнут.' });
+      if (!ok) return;
+      try {
+        await dbApi.deleteChannel(delBtn.dataset.delch, chat.id);
+        menu.remove();
+        if (chat._channels?.length) {
+          chat._channelId = chat._channels[0].id;
+          openChat(chat.id);
+        } else closeChat();
+        toast('Канал удалён');
+      } catch (err) { toast('Ошибка: ' + err.message); }
+      return;
+    }
+    if (e.target.closest('.channel-item.add')) {
+      menu.remove();
+      const name = await promptModal('Новый канал', 'Например: флудилкa, мемы, музыка');
+      if (!name) return;
+      try {
+        const ch = await dbApi.createChannel(chat.id, name);
+        chat._channelId = ch.id;
+        openChat(chat.id);
+        toast(`Канал #${name} создан ✓`);
+      } catch (err) { toast('Ошибка: ' + err.message); }
+      return;
+    }
+    const item = e.target.closest('.channel-item[data-ch]');
+    if (item) {
+      menu.remove();
+      if (item.dataset.ch !== chat._channelId) {
+        chat._channelId = item.dataset.ch;
+        saveDraft();
+        openChat(chat.id);
+      }
+    }
+  });
+  setTimeout(() => document.addEventListener('click', closeChannelMenuOnce, { once: true }), 0);
+}
+function closeChannelMenuOnce(e) {
+  if (e.target.closest('.channel-menu')) {
+    document.addEventListener('click', closeChannelMenuOnce, { once: true });
+    return;
+  }
+  document.querySelector('.channel-menu')?.remove();
+}
+
+// маленький ввод текста в модалке (для названия канала)
+function promptModal(title, placeholder) {
+  return new Promise((resolve) => {
+    const m = el(`
+      <div class="modal-overlay">
+        <div class="modal confirm-modal">
+          <h3>${esc(title)}</h3>
+          <input id="pm-value" type="text" maxlength="30" placeholder="${esc(placeholder || '')}">
+          <div class="modal-actions">
+            <button class="btn ghost" data-act="no">Отмена</button>
+            <button class="btn primary" data-act="yes">Создать</button>
+          </div>
+        </div>
+      </div>`);
+    document.querySelector('#modal-root').appendChild(m);
+    const inp = m.querySelector('#pm-value');
+    inp.focus();
+    const close = (v) => { m.remove(); resolve(v); };
+    m.addEventListener('click', (e) => {
+      if (e.target === m || e.target.closest('[data-act=no]')) close(null);
+      if (e.target.closest('[data-act=yes]')) close(inp.value.trim());
+    });
+    m.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') close(inp.value.trim());
+      if (e.key === 'Escape') close(null);
+    });
+  });
+}
+
+// ================== ЗАКРЕПЛЁННОЕ СООБЩЕНИЕ ==================
+
+function renderPinnedBar() {
+  const chat = state.chats.get(state.activeChatId);
+  const bar = qs('#pinned-bar');
+  if (!bar) return;
+  const pinnedId = chat?.pinned_message_id;
+  const m = pinnedId ? msgs.find((x) => x.id === pinnedId) : null;
+  if (!pinnedId || (!m && !msgs.length)) { bar.classList.add('hidden'); bar.innerHTML = ''; return; }
+  const sender = m ? memberProfile(chat, m.sender_id) : null;
+  const name = sender ? (sender.display_name || `@${sender.nickname}`) : 'Сообщение';
+  bar.innerHTML = `
+    <div class="pinned-inner" data-jump="${esc(pinnedId)}">
+      <span class="pinned-icon">📌</span>
+      <div class="pinned-text">
+        <div class="pinned-name">Закреплено · ${esc(name)}</div>
+        <div class="pinned-preview">${m ? esc(previewOf(m)) : 'открой, чтобы увидеть'}</div>
+      </div>
+      <button class="pinned-close" title="Открепить">✕</button>
+    </div>`;
+  bar.classList.remove('hidden');
+
+  bar.querySelector('.pinned-inner').addEventListener('click', async (e) => {
+    if (e.target.closest('.pinned-close')) {
+      try { await dbApi.unpinMessage(chat.id); renderPinnedBar(); toast('Откреплено'); } catch (err) { toast('Ошибка: ' + err.message); }
+      return;
+    }
+    jumpToMessage(pinnedId);
+  });
 }
 
 // ================== СООБЩЕНИЯ ==================
@@ -154,14 +290,23 @@ function linkify(escaped) {
 function barsHTML(seed) {
   let h = 0;
   for (const c of String(seed || '')) h = ((h * 31 + c.codePointAt(0)) >>> 0);
-  const n = 24;
   let out = '';
-  for (let i = 0; i < n; i++) {
+  for (let i = 0; i < 24; i++) {
     h = ((h * 1103515245 + 12345) >>> 0);
     const v = 25 + ((h >>> 16) % 75);
     out += `<i style="height:${v}%"></i>`;
   }
   return out;
+}
+
+function reactionsHTML(m) {
+  const r = reactions.get(m.id);
+  if (!r || !r.size) return '';
+  const chips = [...r.entries()].map(([emoji, users]) => `
+    <button class="react-chip ${users.has(state.me.id) ? 'mine' : ''}" data-react="${esc(emoji)}" data-msg="${esc(m.id)}">
+      ${esc(emoji)}<span>${users.size}</span>
+    </button>`).join('');
+  return `<div class="msg-reactions">${chips}</div>`;
 }
 
 function messageEl(m, chat, showDaySep) {
@@ -176,20 +321,20 @@ function messageEl(m, chat, showDaySep) {
     parts.push(`<div class="day-sep"><span>${esc(fmtDaySep(m.created_at))}</span></div>`);
   }
 
-  // цитата-ответ
   let quote = '';
   if (m.reply_to) {
     const orig = msgs.find((x) => x.id === m.reply_to);
     const origSender = orig ? memberProfile(chat, orig.sender_id) : null;
-    const origName = origSender
-      ? (origSender.display_name || `@${origSender.nickname}`)
-      : 'Сообщение';
+    const origName = origSender ? (origSender.display_name || `@${origSender.nickname}`) : 'Сообщение';
     quote = `
       <div class="msg-quote" data-target="${esc(m.reply_to)}">
         <div class="msg-quote-name">${esc(origName)}</div>
         <div class="msg-quote-text">${esc(orig ? previewOf(orig) : 'сообщение удалено')}</div>
       </div>`;
   }
+
+  const fwd = m.forwarded_from
+    ? `<div class="msg-fwd">↪ Переслано от <b>${esc(m.forwarded_from)}</b></div>` : '';
 
   let content = '';
   if (m.attachment_type === 'image' && m.attachment_url) {
@@ -217,9 +362,10 @@ function messageEl(m, chat, showDaySep) {
         </span>
       </a>`;
   }
-  if (m.body) {
-    content += `<div class="msg-text">${linkify(esc(m.body)).replaceAll('\n', '<br>')}</div>`;
-  }
+  const bodyHTML = editState === m.id
+    ? `<div class="msg-editing"><textarea id="edit-inline" rows="2" maxlength="4000">${esc(m.body)}</textarea>
+       <div class="msg-editing-hint">Enter — сохранить · Esc — отмена</div></div>`
+    : (m.body ? `<div class="msg-text">${linkify(esc(m.body)).replaceAll('\n', '<br>')}</div>` : '');
 
   let ticks = '';
   if (own) {
@@ -233,21 +379,15 @@ function messageEl(m, chat, showDaySep) {
   const author = (!own && isGroup)
     ? `<div class="msg-author">${avatarHTML(sender?.avatar_url, name, 'xs')}${esc(name)}</div>` : '';
 
-  const actions = `
-    <div class="msg-actions">
-      <button class="msg-act" data-act="reply" title="Ответить">↩</button>
-      <button class="msg-act" data-act="fav" title="В избранное">🔖</button>
-      ${own && !m.attachment_type ? '<button class="msg-act" data-act="edit" title="Изменить">✏️</button>' : ''}
-      ${own ? '<button class="msg-act danger" data-act="del" title="Удалить">🗑</button>' : ''}
-    </div>`;
-
   parts.push(`
     <div class="msg-row${own ? ' own' : ''}" data-id="${m.id}">
       ${author}
       <div class="msg${own ? ' out' : ' in'}">
-        ${quote}${content || '<div class="msg-text muted">Пустое сообщение</div>'}
+        ${quote}${fwd}${content}
+        ${bodyHTML || (!content ? '<div class="msg-text muted">Пустое сообщение</div>' : '')}
+        ${reactionsHTML(m)}
         <div class="msg-meta"><span class="msg-time">${fmtTime(m.created_at)}</span>${edited}${ticks}</div>
-        ${actions}
+        <button class="msg-more" data-more="${esc(m.id)}" title="Ещё">⋯</button>
       </div>
     </div>`);
   return parts.join('');
@@ -263,7 +403,7 @@ function renderMessages(scrollToBottom = false) {
   if (hasMore) html += `<button class="load-earlier" id="load-earlier">Показать ещё</button>`;
   if (!msgs.length) {
     html += `<div class="list-empty chat-start">
-      ${esc(chatTitleFor(chat))} — чат создан 🎉<br>Напиши текст, отправь фото, голосовое или видео!
+      ${esc(chatTitleFor(chat))} — начало 🎉<br>Напиши текст, отправь фото, голосовое или видео!
     </div>`;
   }
   let lastDay = null;
@@ -280,8 +420,48 @@ function renderMessages(scrollToBottom = false) {
   if (le) le.addEventListener('click', loadEarlier);
 
   renderTyping();
+  renderPinnedBar();
   if (scrollToBottom || nearBottom) box.scrollTop = box.scrollHeight;
   updateScrollBtn();
+
+  // режим правки: фокус и обработчики
+  const ed = qs('#edit-inline', box);
+  if (ed) {
+    ed.focus();
+    ed.setSelectionRange(ed.value.length, ed.value.length);
+    ed.addEventListener('keydown', async (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        await commitInlineEdit(ed.value.trim());
+      }
+      if (e.key === 'Escape') { editState = null; renderMessages(false); }
+    });
+  }
+}
+
+async function commitInlineEdit(body) {
+  const id = editState;
+  editState = null;
+  if (!body) { renderMessages(false); return; }
+  try {
+    const updated = await dbApi.editMessage(id, body);
+    const idx = msgs.findIndex((x) => x.id === id);
+    if (idx !== -1) msgs[idx] = updated;
+    renderMessages(false);
+    toast('Изменено ✓');
+  } catch (e) { toast('Ошибка: ' + e.message); renderMessages(false); }
+}
+
+async function loadReactionsFor(ids) {
+  try {
+    const rows = await dbApi.loadReactions(ids);
+    for (const r of rows) {
+      if (!reactions.has(r.message_id)) reactions.set(r.message_id, new Map());
+      const m = reactions.get(r.message_id);
+      if (!m.has(r.emoji)) m.set(r.emoji, new Set());
+      m.get(r.emoji).add(r.user_id);
+    }
+  } catch { /* реакции не критичны */ }
 }
 
 async function loadEarlier() {
@@ -289,8 +469,6 @@ async function loadEarlier() {
   const box = qs('#messages');
   const btn = qs('#load-earlier');
   if (btn) { btn.disabled = true; btn.textContent = 'Загружаю…'; }
-
-  // запоминаем первое видимое сообщение, чтобы после рендера остаться на нём
   const firstVisible = findFirstVisibleMsgId(box);
   try {
     const earlier = await dbApi.loadEarlier(state.activeChatId, msgs[0].created_at);
@@ -298,6 +476,7 @@ async function loadEarlier() {
     const seen = new Set(msgs.map((m) => m.id));
     for (const m of earlier) if (!seen.has(m.id)) msgs.push(m);
     msgs.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+    await loadReactionsFor(earlier.map((m) => m.id));
     renderMessages(false);
     const anchor = firstVisible && qs(`.msg-row[data-id="${firstVisible}"]`, box);
     if (anchor) box.scrollTop = Math.max(0, anchor.offsetTop - 60);
@@ -320,10 +499,12 @@ function findFirstVisibleMsgId(box) {
 export function onNewMessage(m) {
   if (m.chat_id !== state.activeChatId) return;
   if (msgIds.has(m.id)) return;
+  // в серверах показываем только сообщения текущего канала
+  const chat = state.chats.get(state.activeChatId);
+  if (chat && chat.type === 'group' && chat._channelId && m.channel_id && m.channel_id !== chat._channelId) return;
   msgIds.add(m.id);
   msgs.push(m);
   msgs.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-  const chat = state.chats.get(state.activeChatId);
   const box = qs('#messages');
   const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 120;
   renderMessages(m.sender_id === state.me.id || m.body || m.attachment_type);
@@ -341,6 +522,7 @@ export function onMessageDeleted(id) {
   if (!msgIds.has(id)) return;
   msgIds.delete(id);
   msgs = msgs.filter((m) => m.id !== id);
+  reactions.delete(id);
   renderMessages(false);
 }
 
@@ -350,6 +532,31 @@ export function onMessageUpdated(m) {
   if (idx === -1) return;
   msgs[idx] = m;
   renderMessages(false);
+}
+
+// realtime реакции
+export function onReactionChange(row, deleted = false) {
+  const mid = deleted ? (row.old && row.old.message_id) : row.new && row.new.message_id;
+  if (!mid || !msgs.some((x) => x.id === mid)) return;
+  const uid = deleted ? row.old.user_id : row.new.user_id;
+  const emo = deleted ? row.old.emoji : row.new.emoji;
+  if (!reactions.has(mid)) reactions.set(mid, new Map());
+  const m = reactions.get(mid);
+  if (deleted) {
+    m.get(emo)?.delete(uid);
+    if (m.get(emo)?.size === 0) m.delete(emo);
+  } else {
+    if (!m.has(emo)) m.set(emo, new Set());
+    m.get(emo).add(uid);
+  }
+  renderMessages(false);
+}
+
+// закреп через realtime
+export function onChatUpdated(row) {
+  const chat = state.chats.get(row.id);
+  if (chat) chat.pinned_message_id = row.pinned_message_id;
+  if (row.id === state.activeChatId) renderPinnedBar();
 }
 
 export function onMembersUpdated() {
@@ -364,9 +571,78 @@ export function onPresenceChanged() {
   import('./chatlist.js').then((m) => m.renderChatList());
 }
 
-// ================== ДЕЙСТВИЯ: ОТВЕТ / КОПИЯ / УДАЛЕНИЕ ==================
+// ================== КОНТЕКСТНОЕ МЕНЮ (вместо вечно висящих кнопок) ==================
 
 function getMsg(id) { return msgs.find((m) => m.id === id); }
+
+function closeMsgMenu() {
+  document.querySelector('.msg-menu')?.remove();
+}
+
+function canModerate(chat) {
+  return chat.created_by === state.me.id
+    || (chat.members || []).some((x) => x.user_id === state.me.id && ['owner', 'admin'].includes(x.role));
+}
+
+function openMsgMenu(x, y, msgId) {
+  closeMsgMenu();
+  const m = getMsg(msgId);
+  if (!m) return;
+  const chat = state.chats.get(state.activeChatId);
+  const own = m.sender_id === state.me.id;
+  const mod = canModerate(chat);
+  const pinned = chat.pinned_message_id === msgId;
+
+  const menu = el(`
+    <div class="msg-menu">
+      <div class="msg-menu-reacts">${QUICK_EMOJI.map((e2) =>
+        `<button class="react-btn" data-act="react:${esc(e2)}" title="Реакция ${e2}">${e2}</button>`).join('')}</div>
+      <button data-act="reply">↩ Ответить</button>
+      <button data-act="copy">⧉ Копировать</button>
+      <button data-act="forward">➦ Переслать…</button>
+      <button data-act="fav">🔖 В избранное</button>
+      ${(mod || own) ? `<button data-act="pin">📌 ${pinned ? 'Открепить' : 'Закрепить'}</button>` : ''}
+      ${own && !m.attachment_type ? '<button data-act="edit">✏️ Изменить</button>' : ''}
+      ${own ? '<button class="danger" data-act="del">🗑 Удалить</button>' : ''}
+    </div>`);
+  document.body.appendChild(menu);
+  const r = menu.getBoundingClientRect();
+  menu.style.left = Math.max(8, Math.min(x, window.innerWidth - r.width - 8)) + 'px';
+  menu.style.top = Math.max(8, Math.min(y, window.innerHeight - r.height - 8)) + 'px';
+
+  menu.addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-act]');
+    if (!b) return;
+    const act = b.dataset.act;
+    closeMsgMenu();
+    if (act.startsWith('react:')) toggleReactionLocal(msgId, act.slice(6));
+    else doAction(act, msgId);
+  });
+  setTimeout(() => document.addEventListener('click', closeMsgMenuOnce, { once: true }), 0);
+}
+function closeMsgMenuOnce(e) {
+  if (e.target.closest('.msg-menu')) {
+    document.addEventListener('click', closeMsgMenuOnce, { once: true });
+    return;
+  }
+  closeMsgMenu();
+}
+
+async function toggleReactionLocal(msgId, emoji) {
+  try {
+    await dbApi.toggleReaction(msgId, emoji);
+    // локально обновим мгновенно (realtime придёт и не дублирует, т.к. Set)
+    if (!reactions.has(msgId)) reactions.set(msgId, new Map());
+    const map = reactions.get(msgId);
+    if (!map.has(emoji)) map.set(emoji, new Set());
+    const set = map.get(emoji);
+    if (set.has(state.me.id)) { set.delete(state.me.id); if (!set.size) map.delete(emoji); }
+    else set.add(state.me.id);
+    renderMessages(false);
+  } catch (e) { toast('Ошибка: ' + e.message); }
+}
+
+// ================== ДЕЙСТВИЯ ==================
 
 function setReply(m) {
   replyState = m;
@@ -384,6 +660,7 @@ function setReply(m) {
     </div>`;
   bar.classList.remove('hidden');
   bar.querySelector('.reply-bar-close').addEventListener('click', clearReply);
+  qs('#msg-input').focus();
 }
 
 function clearReply() {
@@ -399,6 +676,7 @@ async function handleDelete(msgId) {
     await dbApi.deleteMessage(msgId);
     msgIds.delete(msgId);
     msgs = msgs.filter((m) => m.id !== msgId);
+    reactions.delete(msgId);
     renderMessages(false);
   } catch (e) {
     toast('Не удалось удалить: ' + e.message);
@@ -420,85 +698,144 @@ function doAction(act, msgId) {
       .then(() => toast('Сохранено в «Избранное» 🔖'))
       .catch((e) => toast('Ошибка: ' + e.message));
   }
-  if (act === 'edit') openEditModal(m);
+  if (act === 'edit') {
+    editState = msgId;
+    renderMessages(false);
+  }
   if (act === 'del') handleDelete(msgId);
+  if (act === 'pin') togglePin(m);
 }
 
-// ---------- редактирование своего сообщения ----------
+async function togglePin(m) {
+  const chat = state.chats.get(state.activeChatId);
+  try {
+    if (chat.pinned_message_id === m.id) {
+      await dbApi.unpinMessage(chat.id);
+      toast('Откреплено');
+    } else {
+      await dbApi.pinMessage(chat.id, m.id);
+      toast('Закреплено 📌');
+    }
+    renderPinnedBar();
+  } catch (e) { toast('Ошибка: ' + e.message); }
+}
 
-function openEditModal(m) {
-  const overlay = el(`
+// ---------- пересылка ----------
+
+function openForwardModal(src) {
+  const chat = state.chats.get(state.activeChatId);
+  const fromName = (() => {
+    const s = memberProfile(chat, src.sender_id);
+    return s ? (s.display_name || `@${s.nickname}`) : 'Неизвестно';
+  })();
+
+  const m = el(`
     <div class="modal-overlay">
       <div class="modal">
-        <h3>Изменить сообщение</h3>
-        <textarea id="edit-text" rows="4" maxlength="4000">${esc(m.body)}</textarea>
-        <div class="form-error" id="edit-error"></div>
+        <h3>Переслать сообщение</h3>
+        <div class="field-hint">Выбери, куда отправить:</div>
+        <div class="gr-members fw-list">
+          ${[...state.chats.values()]
+            .filter((c) => c.id !== state.activeChatId)
+            .sort((a, b) => new Date(b.last_message_at) - new Date(a.last_message_at))
+            .map((c) => {
+              const isSv = isSavedChat(c);
+              const title = isSv ? '🔖 Избранное' : chatTitleFor(c);
+              const av = isSv
+                ? '<span class="avatar sm saved-av">🔖</span>'
+                : avatarHTML(c.type === 'group' ? c.avatar_url : (otherMember(c)?.avatar_url), title, 'sm');
+              return `
+                <div class="person-row sm fw-row" data-chat="${c.id}" data-title="${esc(title)}">
+                  ${av}
+                  <div class="chat-row-main"><span class="chat-row-title">${esc(title)}</span></div>
+                  <span class="person-add">➦</span>
+                </div>`;
+            }).join('') || '<div class="list-empty">Нет других чатов</div>'}
+        </div>
         <div class="modal-actions">
-          <button class="btn ghost" data-act="cancel">Отмена</button>
-          <button class="btn primary" id="edit-save">Сохранить</button>
+          <button class="btn ghost" data-act="close">Отмена</button>
         </div>
       </div>
     </div>`);
-  document.querySelector('#modal-root').appendChild(overlay);
-  const close = () => overlay.remove();
-  overlay.addEventListener('click', (e) => {
-    if (e.target === overlay || e.target.closest('[data-act=cancel]')) close();
-  });
-  overlay.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      qs('#edit-save', overlay).click();
+
+  document.querySelector('#modal-root').appendChild(m);
+  const close = () => m.remove();
+  m.addEventListener('click', async (e) => {
+    if (e.target === m || e.target.closest('[data-act=close]')) { close(); return; }
+    const row = e.target.closest('.fw-row');
+    if (row) {
+      try {
+        await dbApi.forwardMessage(row.dataset.chat, src, fromName);
+        close();
+        toast(`Переслано в «${row.dataset.title}» ✓`);
+      } catch (err) { toast('Ошибка: ' + err.message); }
     }
   });
-  qs('#edit-save', overlay).addEventListener('click', async () => {
-    const body = qs('#edit-text', overlay).value.trim();
-    if (!body) { qs('#edit-error', overlay).textContent = 'Текст не может быть пустым.'; return; }
-    try {
-      const updated = await dbApi.editMessage(m.id, body);
-      close();
-      onMessageUpdated(updated);
-      toast('Сообщение изменено ✓');
-    } catch (e) {
-      qs('#edit-error', overlay).textContent = e.message;
-    }
-  });
-  setTimeout(() => { qs('#edit-text', overlay).focus(); }, 50);
 }
 
-function openMsgMenu(x, y, msgId) {
-  closeMsgMenu();
-  const m = getMsg(msgId);
-  if (!m) return;
-  const own = m.sender_id === state.me.id;
-  const menu = el(`
-    <div class="msg-menu" style="left:0;top:0">
-      <button data-act="reply">↩ Ответить</button>
-      <button data-act="fav">🔖 В избранное</button>
-      <button data-act="copy">⧉ Копировать</button>
-      ${own && !m.attachment_type ? '<button data-act="edit">✏️ Изменить</button>' : ''}
-      ${own ? '<button class="danger" data-act="del">🗑 Удалить</button>' : ''}
-    </div>`);
-  document.body.appendChild(menu);
-  const r = menu.getBoundingClientRect();
-  menu.style.left = Math.min(x, window.innerWidth - r.width - 8) + 'px';
-  menu.style.top = Math.min(y, window.innerHeight - r.height - 8) + 'px';
-  menu.addEventListener('click', (e) => {
-    const b = e.target.closest('button[data-act]');
-    if (b) doAction(b.dataset.act, msgId);
-    closeMsgMenu();
-  });
-  setTimeout(() => document.addEventListener('click', closeMsgMenuOnce, { once: true }), 0);
-}
-function closeMsgMenuOnce(e) {
-  if (e.target.closest('.msg-menu')) {
-    document.addEventListener('click', closeMsgMenuOnce, { once: true });
-    return;
+// ================== ПРЫЖОК К СООБЩЕНИЮ + ПОИСК ==================
+
+async function jumpToMessage(msgId) {
+  if (!msgs.some((x) => x.id === msgId)) {
+    // не загружено — подгружаем историю до этого момента
+    const target = getMsg(msgId) || await findMessageAnywhere(msgId);
+    if (!target) { toast('Сообщение не найдено'); return; }
+    const box = qs('#messages');
+    box.innerHTML = '<div class="loader">Загружаю…</div>';
+    try {
+      // перезагружаем последние N до момента target (и его самого)
+      const { data, error } = await getSb().from('messages')
+        .select('*').eq('chat_id', state.activeChatId)
+        .lte('created_at', target.created_at)
+        .order('created_at', { ascending: false }).limit(MSG_LIMIT);
+      if (error) throw error;
+      msgs = (data || []).slice().reverse();
+      msgIds = new Set(msgs.map((m) => m.id));
+      hasMore = msgs.length >= MSG_LIMIT;
+      await loadReactionsFor(msgs.map((m) => m.id));
+      renderMessages(true);
+    } catch (e) { toast('Ошибка: ' + e.message); return; }
   }
-  closeMsgMenu();
+  const row = qs(`.msg-row[data-id="${msgId}"]`);
+  if (row) {
+    row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    row.classList.add('flash');
+    setTimeout(() => row.classList.remove('flash'), 1300);
+  }
 }
-function closeMsgMenu() {
-  const mm = document.querySelector('.msg-menu');
-  if (mm) mm.remove();
+
+async function findMessageAnywhere(msgId) {
+  const { data, error } = await getSb().from('messages')
+    .select('*').eq('id', msgId).maybeSingle();
+  return error ? null : data;
+}
+
+function setSearchOpen(open) {
+  searchOpen = open;
+  const row = qs('#search-row');
+  row.classList.toggle('hidden', !open);
+  if (open) qs('#chat-search').focus();
+  else { qs('#chat-search').value = ''; qs('#chat-search-results').innerHTML = ''; qs('#chat-search-results').classList.add('hidden'); }
+}
+
+async function doChatSearch() {
+  const q = qs('#chat-search').value.trim();
+  const box = qs('#chat-search-results');
+  if (!q) { box.innerHTML = ''; box.classList.add('hidden'); return; }
+  try {
+    const res = await dbApi.searchMessages(q, state.activeChatId);
+    box.innerHTML = res.length
+      ? res.map((r) => `
+          <div class="search-hit" data-hit="${esc(r.id)}">
+            <span class="search-hit-time">${fmtDaySep(r.created_at)}, ${fmtTime(r.created_at)}</span>
+            <span class="search-hit-text">${esc(r.body.slice(0, 80))}</span>
+          </div>`).join('')
+      : '<div class="search-hit empty">Ничего не нашлось</div>';
+    box.classList.remove('hidden');
+  } catch (e) {
+    box.innerHTML = `<div class="search-hit empty">${esc(e.message)}</div>`;
+    box.classList.remove('hidden');
+  }
 }
 
 // ================== ПЛЕЕР ГОЛОСОВЫХ ==================
@@ -519,8 +856,7 @@ function stopPlayback() {
 
 function setVoiceProgress(v, p) {
   const bars = v.querySelectorAll('.voice-bars i');
-  const n = bars.length;
-  bars.forEach((b, i) => b.classList.toggle('on', i < p * n));
+  bars.forEach((b, i) => b.classList.toggle('on', i < p * bars.length));
 }
 
 function toggleVoice(v) {
@@ -590,13 +926,14 @@ function renderTyping() {
   row.innerHTML = txt ? `<div class="typing">${esc(txt)}<span class="dots"><i></i><i></i><i></i></span></div>` : '';
 }
 
-// ================== ИНФО О ЧАТЕ ==================
+// ================== ИНФО О ЧАТЕ (+ инвайты серверов) ==================
 
 async function openChatInfo() {
   const chat = state.chats.get(state.activeChatId);
   if (!chat) return;
   const meId = state.me.id;
   const isOwner = chat.created_by === meId;
+  const mod = canModerate(chat);
 
   if (isSavedChat(chat)) {
     const m = el(`
@@ -651,7 +988,9 @@ async function openChatInfo() {
     return;
   }
 
+  // ---- сервер ----
   const members = (chat.members || []).slice();
+  const canKick = (mm) => mod && mm.user_id !== meId && mm.role !== 'owner';
   const rows = members.map((mm) => {
     const p = mm.profiles || {};
     const online = state.online.has(mm.user_id);
@@ -664,24 +1003,27 @@ async function openChatInfo() {
           <div class="chat-row-bottom"><span class="chat-row-preview">@${esc(p.nickname)}</span></div>
         </div>
         ${mm.role === 'owner' ? '<span class="role-badge">владелец</span>' : ''}
-        ${mm.role !== 'owner' && isOwner ? `<button class="btn tiny ghost kick" data-kick="${mm.user_id}">✕</button>` : ''}
+        ${mm.role === 'admin' ? '<span class="role-badge admin">админ</span>' : ''}
+        ${isOwner && mm.role === 'member' ? `<button class="btn tiny ghost kick-up" data-up="${mm.user_id}" title="Сделать админом">↑</button>` : ''}
+        ${canKick(mm) ? `<button class="btn tiny ghost kick" data-kick="${mm.user_id}">✕</button>` : ''}
       </div>`;
   }).join('');
 
   const m = el(`
     <div class="modal-overlay">
       <div class="modal">
-        <h3>${esc(chat.title || 'Группа')}</h3>
-        <div class="field-hint">${members.length} ${plural(members.length)} · создал(а) ${esc((members.find((x) => x.user_id === chat.created_by)?.profiles || {}).nickname || '—')}</div>
+        <h3>${esc(chat.title || 'Сервер')}</h3>
+        <div class="field-hint">${members.length} ${plural(members.length)} · ${chat._channels?.length || 0} каналов</div>
         <div class="gr-members">${rows}</div>
-        <label class="field">Добавить участника
+        <label class="field">Пригласить по нику
           <input id="ci-search" type="text" placeholder="Поиск по нику">
         </label>
         <div id="ci-results" class="gr-results"></div>
         <div class="form-error" id="ci-error"></div>
         <div class="modal-actions">
+          ${mod ? '<button class="btn primary" id="ci-invite">🔗 Ссылка-приглашение</button>' : ''}
           <button class="btn ghost" data-act="close">Закрыть</button>
-          ${isOwner ? '<button class="btn danger" id="ci-delete">Удалить группу</button>' : '<button class="btn danger" id="ci-leave">Покинуть группу</button>'}
+          ${isOwner ? '<button class="btn danger" id="ci-delete">Удалить сервер</button>' : '<button class="btn danger" id="ci-leave">Покинуть</button>'}
         </div>
       </div>
     </div>`);
@@ -691,24 +1033,58 @@ async function openChatInfo() {
     if (e.target === m || e.target.closest('[data-act=close]')) m.remove();
   });
 
-  m.addEventListener('click', async (e) => {
-    const kickBtn = e.target.closest('.kick');
-    if (!kickBtn) return;
-    const uid = kickBtn.dataset.kick;
-    const p = memberProfile(chat, uid);
-    const ok = await confirmDialog({ title: `Удалить ${p ? (p.display_name || p.nickname) : 'участника'} из группы?` });
-    if (!ok) return;
+  // ссылка-приглашение
+  const inviteBtn = qs('#ci-invite', m);
+  if (inviteBtn) inviteBtn.addEventListener('click', async () => {
     try {
-      await getSb().from('chat_members').delete()
-        .eq('chat_id', chat.id).eq('user_id', uid);
-      await dbApi.loadChatRow(chat.id);
-      m.remove();
-      openChatInfo();
-      renderHeader();
-      renderChatListBadge();
-    } catch (err) { toast('Ошибка: ' + err.message); }
+      const code = await dbApi.createInvite(chat.id, null, 168);
+      const link = `${location.origin}${location.pathname}?join=${code}`;
+      inviteBtn.outerHTML = `
+        <div class="invite-box">
+          <div class="invite-link">${esc(link)}</div>
+          <button class="btn primary sm" id="ci-copy">Скопировать</button>
+          <div class="field-hint center-hint">Работает 7 дней, без лимита входов</div>
+        </div>`;
+      qs('#ci-copy', m).addEventListener('click', () => {
+        navigator.clipboard.writeText(link)
+          .then(() => toast('Ссылка скопирована ✓'))
+          .catch(() => toast('Скопируй вручную'));
+      });
+    } catch (e) { qs('#ci-error', m).textContent = e.message; }
   });
 
+  // повысить до админа
+  m.addEventListener('click', async (e) => {
+    const up = e.target.closest('.kick-up');
+    if (up) {
+      try {
+        await getSb().from('chat_members')
+          .update({ role: 'admin' })
+          .eq('chat_id', chat.id).eq('user_id', up.dataset.up);
+        await dbApi.loadChatRow(chat.id);
+        m.remove();
+        openChatInfo();
+        toast('Назначен админом ✓');
+      } catch (err) { toast('Ошибка: ' + err.message); }
+    }
+    const kickBtn = e.target.closest('.kick');
+    if (kickBtn) {
+      const uid = kickBtn.dataset.kick;
+      const p = memberProfile(chat, uid);
+      const ok = await confirmDialog({ title: `Исключить ${p ? (p.display_name || p.nickname) : 'участника'}?` });
+      if (!ok) return;
+      try {
+        await getSb().from('chat_members').delete().eq('chat_id', chat.id).eq('user_id', uid);
+        await dbApi.loadChatRow(chat.id);
+        m.remove();
+        openChatInfo();
+        renderHeader();
+        renderChatListBadge();
+      } catch (err) { toast('Ошибка: ' + err.message); }
+    }
+  });
+
+  // поиск и добавление по нику
   const searchInput = qs('#ci-search', m);
   const existing = new Set(members.map((x) => x.user_id));
   const doSearch = debounce(async () => {
@@ -746,25 +1122,51 @@ async function openChatInfo() {
 
   const delBtn = qs('#ci-delete', m);
   if (delBtn) delBtn.addEventListener('click', async () => {
-    const ok = await confirmDialog({ title: 'Удалить группу?', text: 'Группа и история пропадут у всех участников.' });
+    const ok = await confirmDialog({ title: 'Удалить сервер?', text: 'Сервер, каналы и история пропадут у всех участников.' });
     if (!ok) return;
     m.remove();
     await dbApi.deleteChat(chat.id);
     closeChat();
     renderChatListBadge();
-    toast('Группа удалена');
+    toast('Сервер удалён');
   });
   const leaveBtn = qs('#ci-leave', m);
   if (leaveBtn) leaveBtn.addEventListener('click', async () => {
-    const ok = await confirmDialog({ title: 'Покинуть группу?', text: 'Вернуться смогут только через приглашение владельца.' });
+    const ok = await confirmDialog({ title: 'Покинуть сервер?', text: 'Вернуться можно по ссылке-приглашению.' });
     if (!ok) return;
     m.remove();
     await dbApi.leaveChat(chat.id);
     state.chats.delete(chat.id);
     closeChat();
     renderChatListBadge();
-    toast('Ты покинул(а) группу');
+    toast('Ты покинул(а) сервер');
   });
+}
+
+function renderChatListBadge() {
+  import('./chatlist.js').then((m) => m.renderChatList());
+}
+
+// ================== ЧЕРНОВИКИ ==================
+
+function draftKey() {
+  const chat = state.chats.get(state.activeChatId);
+  if (!chat) return null;
+  return chat.type === 'group' ? `draft:${chat.id}:${chat._channelId}` : `draft:${chat.id}`;
+}
+function saveDraft() {
+  const k = draftKey();
+  if (!k) return;
+  const t = qs('#msg-input');
+  if (t && t.value.trim()) localStorage.setItem(k, t.value);
+  else localStorage.removeItem(k);
+}
+function restoreDraft() {
+  const k = draftKey();
+  const t = qs('#msg-input');
+  if (!k || !t) return;
+  t.value = localStorage.getItem(k) || '';
+  autoResize();
 }
 
 // ================== ОТПРАВКА ==================
@@ -783,9 +1185,12 @@ async function sendText() {
   input.value = '';
   autoResize();
   try {
-    const m = await dbApi.sendMessage(state.activeChatId, { body, replyToId: replyState?.id });
+    const m = await dbApi.sendMessage(state.activeChatId, {
+      body, replyToId: replyState?.id, fromName: null,
+    });
     onNewMessage(m);
     clearReply();
+    localStorage.removeItem(draftKey());
   } catch (e) {
     input.value = body;
     toast('Не отправилось: ' + e.message);
@@ -838,34 +1243,61 @@ function updateComposerMode() {
   qs('#video-btn').classList.toggle('hidden', hasText || !canRecordVideo());
 }
 
-// ================== ИНИЦИАЛИЗАЦИЯ ИНТЕРФЕЙСА ==================
+// ================== КНОПКА «ВНИЗ» ==================
+
+function isNearBottom() {
+  const box = qs('#messages');
+  return box.scrollHeight - box.scrollTop - box.clientHeight < 120;
+}
+
+function updateScrollBtn() {
+  const btn = qs('#scroll-down');
+  if (!btn) return;
+  const far = !isNearBottom() || pendingBelow > 0;
+  btn.classList.toggle('visible', far);
+  const badge = btn.querySelector('.sd-badge');
+  if (badge) {
+    badge.textContent = pendingBelow > 99 ? '99+' : (pendingBelow || '');
+    badge.classList.toggle('hidden', !pendingBelow);
+  }
+}
+
+// ================== ИНИЦИАЛИЗАЦИЯ ==================
 
 export function initChatViewUI() {
   qs('#back-btn').addEventListener('click', closeChat);
   qs('#chat-info-btn').addEventListener('click', openChatInfo);
   qs('#send-btn').addEventListener('click', sendText);
 
-  // кнопка «вниз» + отслеживание прокрутки
-  qs('#scroll-down').addEventListener('click', () => scrollChatToBottom());
-  qs('#messages').addEventListener('scroll', updateScrollBtn, { passive: true });
-
-  // двойной клик по сообщению — быстрый ответ (как в Telegram)
-  qs('#messages').addEventListener('dblclick', (e) => {
-    const row = e.target.closest('.msg-row');
-    if (row && !e.target.closest('a, button, img, video, .voice')) {
-      doAction('reply', row.dataset.id);
-    }
+  // каналы + поиск
+  qs('#channel-pill').addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleChannelMenu();
   });
+  qs('#chat-search-btn').addEventListener('click', () => setSearchOpen(!searchOpen));
+  qs('#search-close').addEventListener('click', () => setSearchOpen(false));
+  qs('#chat-search').addEventListener('input', debounce(doChatSearch, 250));
+  qs('#chat-search').addEventListener('keydown', (e) => { if (e.key === 'Escape') setSearchOpen(false); });
+  qs('#chat-search-results').addEventListener('click', (e) => {
+    const hit = e.target.closest('.search-hit[data-hit]');
+    if (hit) { setSearchOpen(false); jumpToMessage(hit.dataset.hit); }
+  });
+
+  // кнопка вниз
+  qs('#scroll-down').addEventListener('click', () => {
+    qs('#messages').scrollTo({ top: qs('#messages').scrollHeight, behavior: 'smooth' });
+    pendingBelow = 0;
+    updateScrollBtn();
+  });
+  qs('#messages').addEventListener('scroll', updateScrollBtn, { passive: true });
 
   const input = qs('#msg-input');
   input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      sendText();
-    }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendText(); }
   });
   input.addEventListener('input', () => {
     autoResize();
+    saveDraft();
     updateComposerMode();
     const now = Date.now();
     if (typingChan && state.activeChatId && now - lastTypingSent > 2000) {
@@ -879,7 +1311,6 @@ export function initChatViewUI() {
   });
   updateComposerMode();
 
-  // --- запись голоса и видео ---
   qs('#mic-btn').addEventListener('click', async () => {
     if (sending) return;
     const res = await recordVoice();
@@ -891,7 +1322,6 @@ export function initChatViewUI() {
     if (res) await sendRecorded('video', res);
   });
 
-  // --- файлы ---
   const fileInput = qs('#file-input');
   qs('#attach-btn').addEventListener('click', () => fileInput.click());
   fileInput.addEventListener('change', () => {
@@ -899,7 +1329,6 @@ export function initChatViewUI() {
     fileInput.value = '';
   });
 
-  // --- вставка картинки из буфера ---
   input.addEventListener('paste', (e) => {
     const files = [...(e.clipboardData?.items || [])]
       .filter((i) => i.kind === 'file' && /^image\//.test(i.type))
@@ -911,66 +1340,60 @@ export function initChatViewUI() {
     }
   });
 
-  // --- клики внутри сообщений ---
+  // --- клики в области сообщений ---
   const box = qs('#messages');
   box.addEventListener('click', (e) => {
-    const act = e.target.closest('.msg-act');
-    if (act) {
-      const row = act.closest('.msg-row');
-      if (row) doAction(act.dataset.act, row.dataset.id);
+    const more = e.target.closest('.msg-more');
+    if (more) {
+      const r = more.getBoundingClientRect();
+      openMsgMenu(r.left, r.bottom + 4, more.dataset.more);
       return;
     }
+    const chip = e.target.closest('.react-chip');
+    if (chip) { toggleReactionLocal(chip.dataset.msg, chip.dataset.react); return; }
     const vp = e.target.closest('.voice-play');
     if (vp) { toggleVoice(vp.closest('.voice')); return; }
     const bar = e.target.closest('.voice-bars');
     if (bar) {
       const v = bar.closest('.voice');
-      const r = bar.getBoundingClientRect();
-      const p = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+      const r2 = bar.getBoundingClientRect();
+      const p = Math.min(1, Math.max(0, (e.clientX - r2.left) / r2.width));
       if (currentAudio && currentAudio._uiEl === v) {
         currentAudio.currentTime = p * (currentAudio.duration || +v.dataset.dur || 0);
-      } else {
-        toggleVoice(v);
-      }
+      } else toggleVoice(v);
       return;
     }
     const quote = e.target.closest('.msg-quote');
-    if (quote) {
-      const t = qs(`.msg-row[data-id="${CSS.escape(quote.dataset.target)}"]`, box);
-      if (t) {
-        t.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        t.classList.add('flash');
-        setTimeout(() => t.classList.remove('flash'), 1300);
-      } else {
-        toast('Исходное сообщение не загружено — нажми «Показать ещё»');
-      }
-      return;
-    }
+    if (quote) { jumpToMessage(quote.dataset.target); return; }
     const img = e.target.closest('.msg-img');
     if (img) openLightbox(img.src);
   });
 
-  // --- контекстное меню (правый клик / долгое нажатие) ---
+  // правый клик / долгое нажатие → меню
   box.addEventListener('contextmenu', (e) => {
     const row = e.target.closest('.msg-row');
-    if (row) {
-      e.preventDefault();
-      openMsgMenu(e.clientX, e.clientY, row.dataset.id);
-    }
+    if (row) { e.preventDefault(); openMsgMenu(e.clientX, e.clientY, row.dataset.id); }
   });
   let lpTimer = null;
   box.addEventListener('touchstart', (e) => {
     const row = e.target.closest('.msg-row');
-    if (!row) return;
+    if (!row || e.target.closest('a, button, video')) return;
     lpTimer = setTimeout(() => {
       const t = e.touches[0];
       if (t) openMsgMenu(t.clientX, t.clientY, row.dataset.id);
-    }, 500);
+    }, 450);
   }, { passive: true });
   ['touchend', 'touchmove', 'touchcancel'].forEach((ev) =>
     box.addEventListener(ev, () => clearTimeout(lpTimer), { passive: true }));
 
-  // --- отметить прочитанным при возврате в окно ---
+  // двойной клик — быстрый ответ
+  box.addEventListener('dblclick', (e) => {
+    const row = e.target.closest('.msg-row');
+    if (row && !e.target.closest('a, button, img, video, .voice')) {
+      doAction('reply', row.dataset.id);
+    }
+  });
+
   window.addEventListener('focus', () => {
     if (state.activeChatId && document.visibilityState === 'visible') {
       dbApi.markRead(state.activeChatId);

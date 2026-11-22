@@ -204,26 +204,35 @@ export const dbApi = {
   },
 
   async loadMessages(chatId, limit = 50) {
-    const { data, error } = await _sb.from('messages')
-      .select('*').eq('chat_id', chatId)
+    const chat = state.chats.get(chatId);
+    let query = _sb.from('messages')
+      .select('*').eq('chat_id', chatId);
+    if (chat && chat._channelId) query = query.eq('channel_id', chat._channelId);
+    const { data, error } = await query
       .order('created_at', { ascending: false }).limit(limit);
     if (error) handleErr(error, 'Не удалось загрузить сообщения');
     return (data || []).slice().reverse();
   },
 
   async loadEarlier(chatId, beforeIso) {
-    const { data, error } = await _sb.from('messages')
+    const chat = state.chats.get(chatId);
+    let query = _sb.from('messages')
       .select('*').eq('chat_id', chatId)
-      .lt('created_at', beforeIso)
+      .lt('created_at', beforeIso);
+    if (chat && chat._channelId) query = query.eq('channel_id', chat._channelId);
+    const { data, error } = await query
       .order('created_at', { ascending: false }).limit(30);
     if (error) handleErr(error, 'Не удалось загрузить историю');
     return (data || []).slice().reverse();
   },
 
-  async sendMessage(chatId, { body = '', attachment = null, replyToId = null }) {
+  async sendMessage(chatId, { body = '', attachment = null, replyToId = null, fromName = null }) {
+    const chat = state.chats.get(chatId);
     const row = { chat_id: chatId, sender_id: state.me.id, body };
     if (replyToId) row.reply_to = replyToId;
+    if (fromName) row.forwarded_from = fromName;
     if (attachment) Object.assign(row, attachment);
+    if (chat && chat.type === 'group' && chat._channelId) row.channel_id = chat._channelId;
     const { data, error } = await _sb.from('messages').insert(row).select().single();
     if (error) handleErr(error, 'Не удалось отправить сообщение');
     return data;
@@ -353,6 +362,118 @@ export const dbApi = {
       .update({ body, edited_at: new Date().toISOString() })
       .eq('id', id).select().single();
     if (error) handleErr(error, 'Не удалось изменить сообщение');
+    return data;
+  },
+
+  // ---------- MSPgram 2.0: каналы, реакции, инвайты, закрепы ----------
+
+  isServerChat(chat) {
+    return chat && chat.type === 'group';
+  },
+
+  async loadChannels(chatId) {
+    const { data, error } = await _sb.from('channels')
+      .select('*').eq('chat_id', chatId)
+      .order('position').order('created_at');
+    if (error) handleErr(error, 'Не удалось загрузить каналы');
+    const chat = state.chats.get(chatId);
+    if (chat) chat._channels = data || [];
+    return data || [];
+  },
+
+  async createChannel(chatId, name) {
+    const { data, error } = await _sb.from('channels')
+      .insert({ chat_id: chatId, name }).select().single();
+    if (error) handleErr(error, 'Не удалось создать канал');
+    const chat = state.chats.get(chatId);
+    if (chat) (chat._channels = chat._channels || []).push(data);
+    return data;
+  },
+
+  async deleteChannel(channelId, chatId) {
+    const { error } = await _sb.from('channels').delete().eq('id', channelId);
+    if (error) handleErr(error, 'Не удалось удалить канал');
+    const chat = state.chats.get(chatId);
+    if (chat && chat._channels) chat._channels = chat._channels.filter((c) => c.id !== channelId);
+  },
+
+  async loadReactions(msgIds) {
+    if (!msgIds.length) return [];
+    const { data, error } = await _sb.from('reactions')
+      .select('message_id,user_id,emoji').in('message_id', msgIds);
+    if (error) return [];
+    return data || [];
+  },
+
+  async toggleReaction(msgId, emoji) {
+    const { data, error } = await _sb.rpc('toggle_reaction', { msg: msgId, emo: emoji });
+    if (error) handleErr(error, 'Не удалось поставить реакцию');
+    return data; // true — реакция стоит, false — снята
+  },
+
+  async pinMessage(chatId, msgId) {
+    const { error } = await _sb.from('chats')
+      .update({ pinned_message_id: msgId }).eq('id', chatId);
+    if (error) handleErr(error, 'Не удалось закрепить сообщение');
+    const chat = state.chats.get(chatId);
+    if (chat) chat.pinned_message_id = msgId;
+  },
+
+  async unpinMessage(chatId) {
+    const { error } = await _sb.from('chats')
+      .update({ pinned_message_id: null }).eq('id', chatId);
+    if (error) handleErr(error, 'Не удалось открепить сообщение');
+    const chat = state.chats.get(chatId);
+    if (chat) chat.pinned_message_id = null;
+  },
+
+  async searchMessages(q, chatId = null) {
+    let query = _sb.from('messages')
+      .select('id,chat_id,channel_id,body,created_at,attachment_type')
+      .ilike('body', `%${q}%`)
+      .order('created_at', { ascending: false })
+      .limit(30);
+    if (chatId) query = query.eq('chat_id', chatId);
+    const { data, error } = await query;
+    if (error) handleErr(error, 'Ошибка поиска');
+    return data || [];
+  },
+
+  async forwardMessage(targetChatId, src, fromName) {
+    const target = state.chats.get(targetChatId);
+    const row = {
+      chat_id: targetChatId,
+      sender_id: state.me.id,
+      body: src.body || '',
+      attachment_url: src.attachment_url || '',
+      attachment_type: src.attachment_type || '',
+      attachment_name: src.attachment_name || '',
+      attachment_size: src.attachment_size ?? null,
+      duration_ms: src.duration_ms ?? null,
+      forwarded_from: fromName,
+    };
+    if (target && target.type === 'group') {
+      row.channel_id = target._channelId
+        || (target._channels && target._channels[0] && target._channels[0].id)
+        || null;
+    }
+    const { data, error } = await _sb.from('messages').insert(row).select().single();
+    if (error) handleErr(error, 'Не удалось переслать');
+    return data;
+  },
+
+  async createInvite(chatId, maxUses = null, hours = 168) {
+    const { data, error } = await _sb.rpc('create_invite', {
+      chat: chatId, max_uses: maxUses, hours,
+    });
+    if (error) handleErr(error, 'Не удалось создать ссылку');
+    return data;
+  },
+
+  async joinByInvite(code) {
+    const { data, error } = await _sb.rpc('join_by_invite', { inv: code });
+    if (error) handleErr(error, 'Не удалось присоединиться');
+    if (!state.chats.has(data)) await this.loadChatRow(data);
     return data;
   },
 
