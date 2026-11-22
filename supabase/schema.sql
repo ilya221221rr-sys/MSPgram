@@ -239,6 +239,13 @@ insert into storage.buckets (id, name, public, file_size_limit)
 values ('chat-files', 'chat-files', true, 20971520)
 on conflict (id) do update set public = true, file_size_limit = 20971520;
 
+-- Если скрипт запускается повторно — сначала убираем старые политики
+drop policy if exists "avatars upload" on storage.objects;
+drop policy if exists "avatars update" on storage.objects;
+drop policy if exists "avatars delete" on storage.objects;
+drop policy if exists "chat-files upload" on storage.objects;
+drop policy if exists "chat-files delete" on storage.objects;
+
 -- Аватары: путь всегда "мой_id/файл" — менять могу только я, читать можно всем
 create policy "avatars upload" on storage.objects for insert to authenticated
   with check (bucket_id = 'avatars' and owner_id = auth.uid()::text and name like (auth.uid()::text || '/%'));
