@@ -42,42 +42,51 @@ async function boot() {
   wireBusEvents();
 
   // 3. Сессия
+  // Ссылка восстановления пароля содержит type=recovery — пока пользователь
+  // не задал новый пароль, в приложение НЕ входим ни при каких событиях.
+  const params = new URLSearchParams(location.search);
+  const hashParams = new URLSearchParams(location.hash.slice(1));
+  const urlError = params.has('error') || params.has('error_description')
+    || hashParams.has('error') || hashParams.has('error_description');
+  const isRecovery = hashParams.get('type') === 'recovery' || params.get('type') === 'recovery';
+  const hasAuthCode = params.has('code');
+
   authApi.onAuth(async (session, event) => {
-    // пользователь перешёл по ссылке «восстановить пароль» из письма —
-    // показываем форму нового пароля вместо входа в приложение
+    // перешли по ссылке «восстановить пароль» — открываем форму нового пароля
     if (event === 'PASSWORD_RECOVERY') {
-      history.replaceState(null, '', location.pathname);
       showAuth('newpass');
       return;
     }
-    if (session && session.user) {
+    if (session && session.user && !isRecovery) {
       await enterApp(session);
-    } else {
+    } else if (!session && !isRecovery) {
       await leaveApp();
     }
   });
 
   // ошибка в ссылке из письма (просрочена или уже использована)
-  const params = new URLSearchParams(location.search);
-  const hashParams = new URLSearchParams(location.hash.slice(1));
-  if (params.has('error') || params.has('error_description')
-      || hashParams.has('error') || hashParams.has('error_description')) {
-    history.replaceState(null, '', location.pathname);
+  if (urlError) {
+    history.replaceState(null, '', location.pathname + location.search);
     showAuth();
     const box = qs('#login-error');
     if (box) box.textContent = 'Ссылка недействительна или уже использована. Просто войди обычным способом.';
+    return;
   }
 
   // если в ссылке есть одноразовый код (подтверждение/восстановление) —
   // библиотека сама обменяет его, а сессию подхватит onAuthStateChange
-  const hasAuthCode = params.has('code');
   const session = await authApi.getSession();
-  if (session && !hasAuthCode) await enterApp(session);
-  else if (!session) showAuth();
+  if (isRecovery) {
+    showAuth('newpass'); // ждём сессию восстановления, вход блокируем до смены пароля
+  } else if (session && !hasAuthCode) {
+    await enterApp(session);
+  } else if (!session) {
+    showAuth();
+  }
 
-  // после смены пароля по ссылке — входим в приложение
+  // после смены пароля по ссылке — чистим URL и входим в приложение
   bus.on('password-updated', async () => {
-    history.replaceState(null, '', location.pathname);
+    history.replaceState(null, '', location.pathname + location.search);
     const s = await authApi.getSession();
     if (s) await enterApp(s);
   });
@@ -186,7 +195,7 @@ async function onDbMessage(m) {
   chat.last_message_at = m.created_at;
   chat.last_message_sender = m.sender_id;
   chat.last_message_text = m.body
-    || (m.attachment_type === 'image' ? '📷 Фото' : m.attachment_type === 'file' ? '📎 Файл' : '');
+    || ({ image: '📷 Фото', video: '🎥 Видеосообщение', voice: '🎤 Голосовое сообщение', file: '📎 Файл' }[m.attachment_type] || '');
 
   bus.emit('message:new', m);
   onNewMessage(m); // окно чата
@@ -242,7 +251,8 @@ function showNotification(chat, m) {
   const sender = memberProfile(chat, m.sender_id);
   const senderName = sender ? (sender.display_name || `@${sender.nickname}`) : 'Новое сообщение';
   const title = chat.type === 'group' ? `${chatTitleFor(chat)} · ${senderName}` : senderName;
-  const body = m.body || (m.attachment_type === 'image' ? '📷 Фото' : '📎 Файл');
+  const body = m.body
+    || ({ image: '📷 Фото', video: '🎥 Видеосообщение', voice: '🎤 Голосовое сообщение', file: '📎 Файл' }[m.attachment_type] || '');
   try {
     const n = new Notification(title, {
       body,

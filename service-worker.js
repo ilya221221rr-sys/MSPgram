@@ -1,5 +1,5 @@
 // Service Worker: офлайн-кэш интерфейса (PWA)
-const VERSION = 'mspgram-v4';
+const VERSION = 'mspgram-v5';
 const PRECACHE = [
   './',
   './index.html',

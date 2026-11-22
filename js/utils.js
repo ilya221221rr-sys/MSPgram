@@ -116,6 +116,13 @@ export function fmtBytes(n) {
   return `${(n / 1024 / 1024).toFixed(1)} МБ`;
 }
 
+// 0:07 — длительность голосовых/видео
+export function fmtDuration(totalSec) {
+  const s = Math.max(0, Math.round(totalSec || 0));
+  const m = Math.floor(s / 60);
+  return `${m}:${String(s % 60).padStart(2, '0')}`;
+}
+
 // Короткий звук уведомления (без файлов, через WebAudio)
 let audioCtx = null;
 export function ensureAudio() {
