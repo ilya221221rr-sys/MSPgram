@@ -41,12 +41,13 @@
 Проверка: слева открой **Table Editor** — там должны появиться таблицы
 `profiles`, `chats`, `chat_members`, `messages`.
 
-> 💡 Если проект был создан раньше и уже работал — выполни миграцию
-> [`supabase/migration-2-media.sql`](supabase/migration-2-media.sql) — она нужна
-> для голосовых, видео и ответов.
-> Кнопка 🔖 «Избранное» работает **и без миграции №3** (приложение само создаст
-> чат), но миграцию [`supabase/migration-3-saved.sql`](supabase/migration-3-saved.sql)
-> лучше выполнить — это «штатный» режим. Оба скрипта безопасны при повторном запуске.
+> 💡 Если проект был создан раньше и уже работал — выполни миграции по очереди:
+> [`migration-2-media.sql`](supabase/migration-2-media.sql) (голосовые, видео,
+> ответы) → [`migration-3-saved.sql`](supabase/migration-3-saved.sql) (штатное
+> «Избранное») → [`migration-4-hardening.sql`](supabase/migration-4-hardening.sql)
+> (лечит «permission denied for table chats» — права и политики).
+> 🔖 «Избранное» работает и без миграции №3 (приложение создаст чат само).
+> Все скрипты безопасны при повторном запуске.
 
 ---
 

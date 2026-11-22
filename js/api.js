@@ -242,10 +242,45 @@ export const dbApi = {
   },
 
   async startDirect(userId) {
-    const { data, error } = await _sb.rpc('get_or_create_direct_chat', { other_user: userId });
-    if (error) handleErr(error, 'Не удалось открыть чат');
-    if (!state.chats.has(data)) await this.loadChatRow(data);
-    return data;
+    // 1) штатный путь — security definer функция
+    try {
+      const { data, error } = await _sb.rpc('get_or_create_direct_chat', { other_user: userId });
+      if (!error && data) {
+        if (!state.chats.has(data)) await this.loadChatRow(data);
+        return data;
+      }
+      const msg = String(error?.message || '');
+      if (!/not found|schema cache|42883|permission denied|42501/i.test(msg)) {
+        handleErr(error, 'Не удалось открыть чат');
+      }
+    } catch (e) {
+      if (!/not found|schema cache|42883|permission denied|42501/i.test(String(e.message || ''))) throw e;
+    }
+
+    // 2) фолбэк: найти существующий диалог среди загруженных чатов
+    const existing = [...state.chats.values()].find((c) =>
+      c.type === 'direct' && !isSavedChat(c)
+      && (c.members || []).some((x) => x.user_id === userId));
+    if (existing) return existing.id;
+
+    // 3) фолбэк: создать диалог обычными запросами (нужна миграция №4)
+    let created = null;
+    let err = null;
+    {
+      const r = await _sb.from('chats')
+        .insert({ type: 'direct', created_by: state.me.id }).select().single();
+      created = r.data;
+      err = r.error;
+    }
+    if (err) handleErr(err, 'Не удалось открыть чат');
+    const { error: mErr } = await _sb.from('chat_members')
+      .insert([
+        { chat_id: created.id, user_id: state.me.id },
+        { chat_id: created.id, user_id: userId },
+      ]);
+    if (mErr) handleErr(mErr, 'Не удалось открыть чат');
+    await this.loadChatRow(created.id);
+    return created.id;
   },
 
   async getOrCreateSavedChat() {
