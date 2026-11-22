@@ -14,6 +14,7 @@ drop table if exists public.profiles cascade;
 drop function if exists public.handle_new_user() cascade;
 drop function if exists public.is_chat_member(uuid, uuid) cascade;
 drop function if exists public.get_or_create_direct_chat(uuid) cascade;
+drop function if exists public.get_or_create_saved_chat() cascade;
 drop function if exists public.touch_last_seen() cascade;
 drop function if exists public.unread_counts() cascade;
 drop function if exists public.touch_chat_on_message() cascade;
@@ -38,6 +39,7 @@ create table public.chats (
   type               text not null check (type in ('direct', 'group')),
   title              text,                              -- название группы
   avatar_url         text not null default '',
+  is_saved           boolean not null default false,    -- «Избранное» (чат с собой)
   created_by         uuid references public.profiles(id) on delete set null,
   created_at         timestamptz not null default now(),
   last_message_at    timestamptz not null default now(),
@@ -140,12 +142,36 @@ begin
   from public.chats c
   join public.chat_members a on a.chat_id = c.id and a.user_id = me
   join public.chat_members b on b.chat_id = c.id and b.user_id = other_user
-  where c.type = 'direct'
+  where c.type = 'direct' and c.is_saved = false
   limit 1;
   if cid is not null then return cid; end if;
 
   insert into public.chats (type, created_by) values ('direct', me) returning id into cid;
   insert into public.chat_members (chat_id, user_id) values (cid, me), (cid, other_user);
+  return cid;
+end $$;
+
+-- Свой чат «Избранное» (заметки, ссылки, файлы — видно только тебе)
+create or replace function public.get_or_create_saved_chat()
+returns uuid
+language plpgsql security definer set search_path = public
+as $$
+declare
+  me  uuid := auth.uid();
+  cid uuid;
+begin
+  if me is null then raise exception 'Требуется вход'; end if;
+
+  select c.id into cid
+  from public.chats c
+  join public.chat_members m on m.chat_id = c.id and m.user_id = me
+  where c.is_saved = true
+  limit 1;
+  if cid is not null then return cid; end if;
+
+  insert into public.chats (type, is_saved, title, created_by)
+  values ('direct', true, 'Избранное', me) returning id into cid;
+  insert into public.chat_members (chat_id, user_id, role) values (cid, me, 'owner');
   return cid;
 end $$;
 
