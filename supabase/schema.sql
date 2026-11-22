@@ -66,14 +66,17 @@ create table public.messages (
   sender_id        uuid not null references public.profiles(id) on delete cascade,
   body             text not null default '',
   attachment_url   text not null default '',
-  attachment_type  text not null default '',            -- 'image' | 'file'
+  attachment_type  text not null default '',            -- 'image' | 'video' | 'voice' | 'file'
   attachment_name  text not null default '',
   attachment_size  bigint,
+  duration_ms      integer,                              -- длительность голосовых/видео, мс
+  reply_to         uuid references public.messages(id) on delete set null,
   created_at       timestamptz not null default now(),
   edited_at        timestamptz
 );
 create index messages_chat_idx on public.messages (chat_id, created_at desc);
-comment on table public.messages is 'Сообщения и вложения';
+create index messages_reply_idx on public.messages (reply_to);
+comment on table public.messages is 'Сообщения и вложения (фото, видео, голосовые, файлы), ответы';
 
 -- ============ 3. Функции и триггеры ============
 
@@ -179,7 +182,10 @@ begin
     last_message_text  = case
                            when new.body <> '' then left(new.body, 120)
                            when new.attachment_type = 'image' then '📷 Фото'
-                           else '📎 Файл'
+                           when new.attachment_type = 'video' then '🎥 Видеосообщение'
+                           when new.attachment_type = 'voice' then '🎤 Голосовое сообщение'
+                           when new.attachment_type = 'file' then '📎 Файл'
+                           else ''
                          end,
     last_message_sender = new.sender_id
   where id = new.chat_id;

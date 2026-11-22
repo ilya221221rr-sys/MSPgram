@@ -201,8 +201,9 @@ export const dbApi = {
     return (data || []).slice().reverse();
   },
 
-  async sendMessage(chatId, { body = '', attachment = null }) {
+  async sendMessage(chatId, { body = '', attachment = null, replyToId = null }) {
     const row = { chat_id: chatId, sender_id: state.me.id, body };
+    if (replyToId) row.reply_to = replyToId;
     if (attachment) Object.assign(row, attachment);
     const { data, error } = await _sb.from('messages').insert(row).select().single();
     if (error) handleErr(error, 'Не удалось отправить сообщение');
@@ -275,19 +276,23 @@ export const storeApi = {
     return data.publicUrl;
   },
 
-  async uploadChatFile(chatId, file) {
+  async uploadChatFile(chatId, file, opts = {}) {
     if (file.size > 20 * 1024 * 1024) throw new Error('Файл должен быть не больше 20 МБ');
     const clean = file.name.replace(/[\\/#?&%"\']/g, '_');
     const path = `${chatId}/${uuid()}__${clean}`;
     const { error } = await _sb.storage.from('chat-files').upload(path, file, { upsert: false });
     if (error) handleErr(error, 'Не удалось загрузить файл');
     const { data } = _sb.storage.from('chat-files').getPublicUrl(path);
-    const isImage = /^image\//.test(file.type);
-    return {
+    let type = 'file';
+    if (/^image\//.test(file.type)) type = 'image';
+    else if (/^video\//.test(file.type)) type = 'video';
+    const att = {
       attachment_url: data.publicUrl,
-      attachment_type: isImage ? 'image' : 'file',
+      attachment_type: type,
       attachment_name: file.name,
       attachment_size: file.size,
     };
+    if (opts.durationMs) att.duration_ms = Math.round(opts.durationMs);
+    return att;
   },
 };
