@@ -208,6 +208,7 @@ function stopRealtime() {
 }
 
 async function onDbMessage(m) {
+  if (!state.me) return; // вышли из аккаунта — события игнорируем
   const chat = state.chats.get(m.chat_id);
   if (!chat) {
     try { await dbApi.loadChatRow(m.chat_id); renderChatList(); } catch { /* нет доступа */ }

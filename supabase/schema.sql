@@ -123,6 +123,21 @@ as $$
   );
 $$;
 
+-- Можно ли добавить участника в чат (обходит RLS: чаты создателя/группы)
+create or replace function public.can_join_chat(chat uuid, usr uuid default auth.uid())
+returns boolean
+language sql stable security definer set search_path = public
+as $$
+  select exists (
+    select 1 from public.chats c
+    where c.id = chat
+      and (c.created_by = usr
+           or (c.type = 'group' and exists (
+                 select 1 from public.chat_members m
+                 where m.chat_id = chat and m.user_id = usr)))
+  );
+$$;
+
 -- Открыть личный чат с пользователем (найти или создать)
 create or replace function public.get_or_create_direct_chat(other_user uuid)
 returns uuid
@@ -244,10 +259,7 @@ create policy "chats delete" on public.chats for delete to authenticated using (
 -- Участники: читать могут участники чата; добавлять — создатель или участник группы
 create policy "members read"   on public.chat_members for select to authenticated using (public.is_chat_member(chat_id));
 create policy "members insert" on public.chat_members for insert to authenticated with check (
-  exists (select 1 from public.chats c
-          where c.id = chat_id
-            and (c.created_by = auth.uid()
-                 or (c.type = 'group' and public.is_chat_member(chat_id))))
+  public.can_join_chat(chat_id)
 );
 create policy "members update" on public.chat_members for update to authenticated using (user_id = auth.uid() and public.is_chat_member(chat_id));
 create policy "members delete" on public.chat_members for delete to authenticated using (

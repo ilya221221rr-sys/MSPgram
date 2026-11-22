@@ -25,6 +25,7 @@ export function applyPrefs() {
 }
 
 export function openSettingsModal() {
+  if (!state.me) return;
   const me = state.me;
   const prefs = getPrefs();
   const email = getPrefs()._email || '';

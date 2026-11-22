@@ -43,6 +43,7 @@ export function initChatListUI() {
 
 // ---------- рендер списка чатов ----------
 export function renderChatList() {
+  if (!state.me) return; // зашли/вышли — список ещё не готов
   const list = qs('#chat-list');
   const results = qs('#search-results');
   const q = qs('#search-input').value.trim();
@@ -93,7 +94,7 @@ export function renderChatList() {
 }
 
 function chatRowEl(chat, inSearch) {
-  const meId = state.me.id;
+  const meId = state.me ? state.me.id : null;
   const other = otherMember(chat, meId);
   const saved = isSavedChat(chat);
   const title = saved ? '🔖 Избранное' : chatTitleFor(chat, meId);
@@ -239,9 +240,10 @@ export function openGroupModal() {
   setTimeout(() => qs('#gr-title', m).focus(), 50);
 }
 
-// Обновить аватарку и имя в сайдбаре
+// Обновить аватарку и имя в сайдбаре (безопасно при null-профиле)
 export function renderSidebarMe() {
   const btn = qs('#profile-btn');
+  if (!btn || !state.me) return;
   btn.innerHTML = avatarHTML(state.me.avatar_url, state.me.display_name || state.me.nickname, 'md');
-  btn.title = 'Мой профиль: @' + state.me.nickname;
+  btn.title = 'Настройки: @' + (state.me.nickname || '');
 }
