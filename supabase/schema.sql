@@ -262,9 +262,17 @@ create policy "chat-files delete" on storage.objects for delete to authenticated
 
 -- ============ 6. Realtime (мгновенная доставка) ============
 
-alter publication supabase_realtime add table public.messages;
-alter publication supabase_realtime add table public.chats;
-alter publication supabase_realtime add table public.chat_members;
+do $$ begin
+  alter publication supabase_realtime add table public.messages;
+exception when duplicate_object then null; end $$;
+
+do $$ begin
+  alter publication supabase_realtime add table public.chats;
+exception when duplicate_object then null; end $$;
+
+do $$ begin
+  alter publication supabase_realtime add table public.chat_members;
+exception when duplicate_object then null; end $$;
 
 -- ============ Готово! ============
 -- Проверка: в Table Editor должны появиться таблицы
