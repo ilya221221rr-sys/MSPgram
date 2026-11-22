@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>MSPgram — мессенджер</title>
+<meta name="description" content="MSPgram — свой мессенджер: личные чаты, группы, фото и файлы. Бесплатно и без VPN.">
+<meta name="theme-color" content="#0d1220">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="MSPgram">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- ============ ЭКРАН ПЕРВОНАСТРОЙКИ (если ключи ещё не вставлены) ============ -->
+<section id="setup-screen" class="screen auth-screen hidden">
+  <div class="auth-card">
+    <div class="auth-logo">✈️</div>
+    <h1>Настройка MSPgram</h1>
+    <p class="auth-sub">Вставь данные своего проекта Supabase.<br>Пошаговая инструкция — в файле <b>SETUP.md</b> в репозитории.</p>
+    <form id="setup-form" class="auth-form">
+      <input id="setup-url" type="url" placeholder="Project URL — https://xxxx.supabase.co" required>
+      <input id="setup-key" type="text" placeholder="Ключ anon public (длинная строка)" required>
+      <button class="btn primary" type="submit">Подключить</button>
+      <div class="form-error" id="setup-error"></div>
+    </form>
+    <p class="auth-note">Эти ключи можно вписать навсегда в файл <b>js/config.js</b> — тогда этот экран не появится.</p>
+  </div>
+</section>
+
+<!-- ============ ЭКРАН ВХОДА ============ -->
+<section id="auth-screen" class="screen auth-screen hidden">
+  <div class="auth-card">
+    <div class="auth-logo">✈️</div>
+    <h1>MSPgram</h1>
+    <p class="auth-sub">Свой мессенджер. Без рекламы. Без VPN.</p>
+    <div class="tabs">
+      <button id="tab-login" class="tab active" type="button">Вход</button>
+      <button id="tab-register" class="tab" type="button">Регистрация</button>
+    </div>
+
+    <form id="login-form" class="auth-form">
+      <input id="login-email" type="email" placeholder="Email" required autocomplete="email">
+      <input id="login-password" type="password" placeholder="Пароль" required autocomplete="current-password">
+      <button class="btn primary" type="submit">Войти</button>
+      <div class="form-error" id="login-error"></div>
+    </form>
+
+    <form id="register-form" class="auth-form hidden">
+      <input id="reg-nickname" type="text" placeholder="Ник (3–20 символов, без пробелов)" required maxlength="20">
+      <div class="field-hint" id="reg-nick-hint"></div>
+      <input id="reg-display" type="text" placeholder="Имя (как тебя называть)" maxlength="40">
+      <input id="reg-email" type="email" placeholder="Email" required autocomplete="email">
+      <input id="reg-password" type="password" placeholder="Пароль (минимум 6 символов)" required minlength="6" autocomplete="new-password">
+      <button class="btn primary" type="submit">Создать аккаунт</button>
+      <div class="form-error" id="reg-error"></div>
+    </form>
+  </div>
+</section>
+
+<!-- ============ ПРИЛОЖЕНИЕ ============ -->
+<div id="app" class="app hidden">
+  <aside class="sidebar">
+    <header class="sidebar-head">
+      <button id="profile-btn" class="avatar-btn" title="Мой профиль"></button>
+      <div class="sidebar-title">MSPgram</div>
+      <button id="new-group-btn" class="icon-btn" title="Новая группа">＋</button>
+      <button id="logout-btn" class="icon-btn" title="Выйти">⎋</button>
+    </header>
+    <div class="search-wrap">
+      <input id="search-input" type="search" placeholder="Поиск чатов и людей по нику" autocomplete="off">
+    </div>
+    <div id="search-results" class="chat-list hidden"></div>
+    <nav id="chat-list" class="chat-list"></nav>
+  </aside>
+
+  <main class="chat-area">
+    <div id="chat-empty" class="chat-empty">
+      <div class="empty-logo">💬</div>
+      <h2>Выбери чат</h2>
+      <p>Найди человека через <b>поиск сверху</b> — по нику или имени.<br>Или создай <b>группу</b> кнопкой ＋.</p>
+    </div>
+
+    <section id="chat-view" class="chat-view hidden">
+      <header class="chat-head">
+        <button id="back-btn" class="icon-btn back" title="Назад">←</button>
+        <div id="chat-head-info" class="chat-head-info"></div>
+        <button id="chat-info-btn" class="icon-btn" title="Информация">⋯</button>
+      </header>
+      <div id="messages" class="messages"></div>
+      <div class="composer">
+        <button id="attach-btn" class="icon-btn" title="Прикрепить файл или фото">📎</button>
+        <input id="file-input" type="file" multiple class="hidden">
+        <textarea id="msg-input" rows="1" placeholder="Сообщение…  Enter — отправить"></textarea>
+        <button id="send-btn" class="send-btn" title="Отправить">➤</button>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div id="modal-root"></div>
+<div id="toast-root"></div>
+<div id="lightbox" class="lightbox hidden"></div>
+
+<script src="js/vendor/supabase.js"></script>
+<script src="js/config.js"></script>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>

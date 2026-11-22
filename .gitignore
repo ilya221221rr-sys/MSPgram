@@ -1,0 +1,16 @@
+# ОС-мусор
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Редакторы
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Локальные черновики и тесты
+*.log
+*.tmp
+~$*
+node_modules/
