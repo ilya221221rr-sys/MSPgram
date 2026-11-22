@@ -17,6 +17,16 @@ import { startPresence, stopPresence } from './presence.js';
 let realtimeChan = null;
 let enterPromise = null;
 
+// ================== ГЛОБАЛЬНЫЕ ОШИБКИ (чтобы видеть, что сломалось) ==================
+
+window.addEventListener('error', (e) => {
+  toast('Ошибка: ' + (e.message || 'неизвестно'), 4500);
+});
+window.addEventListener('unhandledrejection', (e) => {
+  const r = e.reason;
+  toast('Ошибка: ' + (r && r.message ? r.message : String(r || 'неизвестно')), 4500);
+});
+
 // ================== ЗАПУСК ==================
 
 async function boot() {
@@ -44,6 +54,9 @@ async function boot() {
   initChatViewUI();
   initLightboxUI();
   wireBusEvents();
+
+  // при изменении профиля — перерисовать чаты (имена и аватарки)
+  bus.on('profile-synced', () => import('./chatlist.js').then((m) => m.renderChatList()));
 
   // 3. Сессия
   // Ссылка восстановления пароля содержит type=recovery — пока пользователь
