@@ -7,7 +7,14 @@ const ERRORS = [
   [/user already registered/i, 'Этот email уже зарегистрирован. Попробуй войти.'],
   [/at least 6 characters/i, 'Пароль должен быть минимум 6 символов.'],
   [/invalid format|validate email/i, 'Некорректный email.'],
-  [/rate limit|too many/i, 'Слишком много попыток. Подожди минуту.'],
+  [/email rate limit exceeded|exceeded/i,
+    'Лимит писем исчерпан: на бесплатном плане Supabase — всего 2 письма в час. ' +
+    'Подожди до часа, либо подключи свой SMTP / отключи подтверждение почты — ' +
+    'пошагово в SETUP.md, раздел «Лимит писем».'],
+  [/too many requests|too many attempts|rate limit/i,
+    'Слишком много попыток подряд. Подожди 1–2 минуты и попробуй снова — лимит сбрасывается сам.'],
+  [/only request this.*60 seconds|once every 60/i,
+    'Письмо уже отправлено. Следующее можно запросить через 60 секунд.'],
   [/not confirmed/i, 'Сначала подтверди email — открой письмо и нажми кнопку.'],
   [/same password|different/i, 'Новый пароль совпадает со старым — придумай другой.'],
   [/password/i, 'Придумай пароль (минимум 6 символов).'],
@@ -20,6 +27,23 @@ export function authErrorText(err) {
 }
 
 const NICK_RE = /^[A-Za-z0-9_А-Яа-яЁё]{3,20}$/;
+
+// Блокирует кнопку на N секунд с обратным отсчётом (защита от спама по кнопке)
+function cooldown(btn, seconds) {
+  let left = seconds;
+  const orig = btn.textContent;
+  btn.disabled = true;
+  const t = setInterval(() => {
+    left -= 1;
+    if (left <= 0) {
+      clearInterval(t);
+      btn.disabled = false;
+      btn.textContent = orig;
+    } else {
+      btn.textContent = `${orig} (через ${left} с)`;
+    }
+  }, 1000);
+}
 
 export function initAuth() {
   const tabLogin = qs('#tab-login');
@@ -75,14 +99,18 @@ export function initAuth() {
 
   // повторная отправка письма подтверждения
   qs('#login-resend').addEventListener('click', async (e) => {
-    const email = e.target.dataset.email || qs('#login-email').value.trim();
+    const btn = e.target;
+    const email = btn.dataset.email || qs('#login-email').value.trim();
     try {
       const { error } = await authApi.resendConfirmation(email);
       if (error) throw error;
+      cooldown(btn, 60);
       showCheck('Письмо отправлено ещё раз',
-        `Открой почту ${email} и нажми кнопку подтверждения. Письмо может попасть в «Спам».`);
+        `Открой почту ${email} и нажми кнопку подтверждения. Письмо может попасть в «Спам». ` +
+        'Если письма нет и через час — исчерпан лимит писем бесплатного плана (2 в час), попробуй позже.');
     } catch (err) {
       qs('#login-error').textContent = authErrorText(err);
+      cooldown(btn, 30);
     }
   });
 
@@ -155,12 +183,13 @@ export function initAuth() {
     try {
       const { error } = await authApi.resetPassword(email);
       if (error) throw error;
+      cooldown(btn, 60);
       showCheck('Письмо для смены пароля отправлено',
         `Отправили ссылку на ${email}. Ссылка работает один раз и действует 1 час. ` +
-        'Открой письмо на этом же устройстве — откроется форма нового пароля.');
+        'Открой письмо на этом же устройстве — откроется форма нового пароля. ' +
+        'Не пришло письмо? Подожди час (лимит бесплатного плана — 2 письма в час).');
     } catch (err) {
       errBox.textContent = authErrorText(err);
-    } finally {
       btn.disabled = false;
       btn.textContent = 'Отправить ссылку';
     }
