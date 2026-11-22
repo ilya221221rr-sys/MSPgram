@@ -395,6 +395,28 @@ input::placeholder, textarea::placeholder { color: #5c688a; }
   .chat-area { display: flex; }
 }
 
+/* ---------- ссылки и доп. элементы на экране входа ---------- */
+.auth-link {
+  background: none; border: none; cursor: pointer;
+  color: var(--accent); font: inherit; font-size: 13.5px;
+  padding: 4px; margin-top: 6px; align-self: center;
+}
+.auth-link:hover { text-decoration: underline; }
+.linklike {
+  background: none; border: none; cursor: pointer;
+  color: var(--accent); font: inherit; font-size: 13px;
+  padding: 2px 0; text-align: left;
+}
+.linklike:hover { text-decoration: underline; }
+.auth-pane { display: flex; flex-direction: column; gap: 10px; text-align: left; }
+.auth-pane.auth-form { text-align: left; }
+.auth-pane h2 { text-align: center; font-size: 20px; }
+.auth-sub.left { text-align: left; font-size: 13.5px; margin: 0 0 6px; }
+.auth-pane .auth-sub { text-align: center; line-height: 1.6; }
+.big-emoji { font-size: 46px; text-align: center; margin-bottom: 6px; }
+#check-pane { align-items: center; }
+#check-pane .btn { margin-top: 10px; width: 100%; }
+
 /* уведомление-плашка при первом запуске */
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }

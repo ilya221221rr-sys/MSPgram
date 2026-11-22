@@ -39,19 +39,23 @@
     <div class="auth-logo">✈️</div>
     <h1>MSPgram</h1>
     <p class="auth-sub">Свой мессенджер. Без рекламы. Без VPN.</p>
-    <div class="tabs">
+    <div class="tabs" id="auth-tabs">
       <button id="tab-login" class="tab active" type="button">Вход</button>
       <button id="tab-register" class="tab" type="button">Регистрация</button>
     </div>
 
-    <form id="login-form" class="auth-form">
+    <!-- ВХОД -->
+    <form id="login-form" class="auth-pane auth-form" data-pane="login">
       <input id="login-email" type="email" placeholder="Email" required autocomplete="email">
       <input id="login-password" type="password" placeholder="Пароль" required autocomplete="current-password">
       <button class="btn primary" type="submit">Войти</button>
       <div class="form-error" id="login-error"></div>
+      <button class="linklike hidden" id="login-resend" type="button">Отправить письмо подтверждения ещё раз</button>
+      <button class="auth-link" id="forgot-link" type="button">Забыли пароль?</button>
     </form>
 
-    <form id="register-form" class="auth-form hidden">
+    <!-- РЕГИСТРАЦИЯ -->
+    <form id="register-form" class="auth-pane auth-form hidden" data-pane="register">
       <input id="reg-nickname" type="text" placeholder="Ник (3–20 символов, без пробелов)" required maxlength="20">
       <div class="field-hint" id="reg-nick-hint"></div>
       <input id="reg-display" type="text" placeholder="Имя (как тебя называть)" maxlength="40">
@@ -59,6 +63,33 @@
       <input id="reg-password" type="password" placeholder="Пароль (минимум 6 символов)" required minlength="6" autocomplete="new-password">
       <button class="btn primary" type="submit">Создать аккаунт</button>
       <div class="form-error" id="reg-error"></div>
+    </form>
+
+    <!-- ЗАБЫЛИ ПАРОЛЬ -->
+    <form id="forgot-form" class="auth-pane auth-form hidden" data-pane="forgot">
+      <p class="auth-sub left">Введи email, на который регистрировался —<br>пришлём ссылку для смены пароля.</p>
+      <input id="forgot-email" type="email" placeholder="Email" required autocomplete="email">
+      <button class="btn primary" type="submit">Отправить ссылку</button>
+      <div class="form-error" id="forgot-error"></div>
+      <button class="auth-link" id="forgot-back" type="button">← Вернуться ко входу</button>
+    </form>
+
+    <!-- ПРОВЕРЬ ПОЧТУ -->
+    <div id="check-pane" class="auth-pane hidden" data-pane="check">
+      <div class="big-emoji">📬</div>
+      <h2 id="check-title">Проверь почту</h2>
+      <p class="auth-sub" id="check-text"></p>
+      <button class="btn ghost" id="check-done" type="button">Я подтвердил(а) — ко входу</button>
+    </div>
+
+    <!-- НОВЫЙ ПАРОЛЬ (после ссылки из письма) -->
+    <form id="newpass-form" class="auth-pane auth-form hidden" data-pane="newpass">
+      <h2>Новый пароль</h2>
+      <p class="auth-sub left">Придумай новый пароль для входа.</p>
+      <input id="newpass-pw" type="password" placeholder="Новый пароль" required minlength="6" autocomplete="new-password">
+      <input id="newpass-pw2" type="password" placeholder="Повтори пароль" required minlength="6" autocomplete="new-password">
+      <button class="btn primary" type="submit">Сохранить пароль</button>
+      <div class="form-error" id="newpass-error"></div>
     </form>
   </div>
 </section>
