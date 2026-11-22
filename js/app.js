@@ -42,16 +42,45 @@ async function boot() {
   wireBusEvents();
 
   // 3. Сессия
-  authApi.onAuth(async (session) => {
+  authApi.onAuth(async (session, event) => {
+    // пользователь перешёл по ссылке «восстановить пароль» из письма —
+    // показываем форму нового пароля вместо входа в приложение
+    if (event === 'PASSWORD_RECOVERY') {
+      history.replaceState(null, '', location.pathname);
+      showAuth('newpass');
+      return;
+    }
     if (session && session.user) {
       await enterApp(session);
     } else {
       await leaveApp();
     }
   });
+
+  // ошибка в ссылке из письма (просрочена или уже использована)
+  const params = new URLSearchParams(location.search);
+  const hashParams = new URLSearchParams(location.hash.slice(1));
+  if (params.has('error') || params.has('error_description')
+      || hashParams.has('error') || hashParams.has('error_description')) {
+    history.replaceState(null, '', location.pathname);
+    showAuth();
+    const box = qs('#login-error');
+    if (box) box.textContent = 'Ссылка недействительна или уже использована. Просто войди обычным способом.';
+  }
+
+  // если в ссылке есть одноразовый код (подтверждение/восстановление) —
+  // библиотека сама обменяет его, а сессию подхватит onAuthStateChange
+  const hasAuthCode = params.has('code');
   const session = await authApi.getSession();
-  if (session) await enterApp(session);
-  else showAuth();
+  if (session && !hasAuthCode) await enterApp(session);
+  else if (!session) showAuth();
+
+  // после смены пароля по ссылке — входим в приложение
+  bus.on('password-updated', async () => {
+    history.replaceState(null, '', location.pathname);
+    const s = await authApi.getSession();
+    if (s) await enterApp(s);
+  });
 
   // 4. Service Worker (PWA)
   if ('serviceWorker' in navigator && location.protocol === 'https:' || location.hostname === 'localhost') {

@@ -62,6 +62,20 @@ export const authApi = {
   async signIn(email, password) {
     return await _sb.auth.signInWithPassword({ email, password });
   },
+  // Письмо «восстановление пароля»: после клика по ссылке откроется наш сайт
+  // с формой нового пароля (событие PASSWORD_RECOVERY)
+  async resetPassword(email) {
+    const redirectTo = location.origin + location.pathname;
+    return await _sb.auth.resetPasswordForEmail(email, { redirectTo });
+  },
+  // Смена пароля (в том числе после перехода по ссылке восстановления)
+  async updatePassword(password) {
+    return await _sb.auth.updateUser({ password });
+  },
+  // Повторная отправка письма подтверждения регистрации
+  async resendConfirmation(email) {
+    return await _sb.auth.resend({ type: 'signup', email });
+  },
   async signOut() {
     await _sb.auth.signOut();
     _sb.removeAllChannels();
