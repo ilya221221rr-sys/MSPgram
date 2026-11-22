@@ -22,7 +22,7 @@ grant select, insert, update, delete on table public.chat_members to authenticat
 grant select, insert, update, delete on table public.messages     to authenticated;
 grant select on table public.profiles to anon;
 
-grant all on sequences in schema public to authenticated;
+grant all privileges on all sequences in schema public to authenticated;
 
 -- ============ 2. Права на функции (EXECUTE) ============
 grant execute on all functions in schema public to anon, authenticated;
