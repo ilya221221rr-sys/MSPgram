@@ -22,6 +22,7 @@ export function applyPrefs() {
   r.setProperty('--accent2', accent.b);
   r.setProperty('--out', accent.out);
   r.setProperty('--msg-font', (MSG_SIZES[p.msgSize] || MSG_SIZES.m).px);
+  document.documentElement.dataset.theme = (p.theme === 'light') ? 'light' : 'dark';
 }
 
 export function openSettingsModal() {
@@ -74,6 +75,10 @@ export function openSettingsModal() {
         </div>
 
         <div class="settings-sec">Внешний вид</div>
+        <div class="settings-row col">
+          <div class="settings-row-title">Тема</div>
+          <div class="chip-row" id="st-themes"></div>
+        </div>
         <div class="settings-row col">
           <div class="settings-row-title">Цвет акцента</div>
           <div class="chip-row" id="st-accents"></div>
@@ -196,6 +201,21 @@ export function openSettingsModal() {
   });
 
   // ---------- внешний вид ----------
+  const themeRow = qs('#st-themes', m);
+  const THEMES = [
+    { key: 'dark', label: '🌙 Тёмная' },
+    { key: 'light', label: '☀️ Светлая' },
+  ];
+  THEMES.forEach((t) => {
+    const chip = el(`<button class="size-chip ${((prefs.theme || 'dark') === t.key) ? 'sel' : ''}" data-theme-key="${t.key}">${t.label}</button>`);
+    chip.addEventListener('click', () => {
+      setPrefs({ theme: t.key });
+      applyPrefs();
+      themeRow.querySelectorAll('.size-chip').forEach((c) => c.classList.toggle('sel', c === chip));
+    });
+    themeRow.appendChild(chip);
+  });
+
   const accentRow = qs('#st-accents', m);
   Object.entries(ACCENTS).forEach(([key, a]) => {
     const chip = el(`

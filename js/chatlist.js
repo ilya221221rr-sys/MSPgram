@@ -1,4 +1,4 @@
-// Список чатов, поиск людей, создание группы
+// Список чатов 2.0: разделы «Личные» и «Серверы», поиск людей
 import { state, dbApi, otherMember, chatTitleFor, isSavedChat } from './api.js';
 import {
   qs, esc, el, bus, toast, avatarHTML, fmtListTime,
@@ -38,17 +38,16 @@ export function initChatListUI() {
       toast('Не получилось: ' + e.message);
     }
   });
-  qs('#new-group-btn').addEventListener('click', openGroupModal);
+  qs('#new-group-btn').addEventListener('click', openServerModal);
 }
 
-// ---------- рендер списка чатов ----------
+// ---------- рендер списка ----------
 export function renderChatList() {
-  if (!state.me) return; // зашли/вышли — список ещё не готов
+  if (!state.me) return;
   const list = qs('#chat-list');
   const results = qs('#search-results');
   const q = qs('#search-input').value.trim();
 
-  // --- люди по поиску ---
   if (searchMode) {
     list.classList.add('hidden');
     results.classList.remove('hidden');
@@ -56,7 +55,7 @@ export function renderChatList() {
       chatTitleFor(c).toLowerCase().includes(q.toLowerCase()));
     results.innerHTML = '';
     if (matchedChats.length) {
-      results.appendChild(el('<div class="search-section">Чаты</div>'));
+      results.appendChild(el('<div class="search-section">Чаты и серверы</div>'));
       matchedChats.forEach((c) => results.appendChild(chatRowEl(c, true)));
     }
     if (searchResults.length) {
@@ -64,51 +63,66 @@ export function renderChatList() {
       searchResults.forEach((p) => results.appendChild(personRowEl(p)));
     }
     if (!matchedChats.length && !searchResults.length) {
-      results.appendChild(el('<div class="list-empty">Никого не нашлось.<br>Попробуй искать по нику или имени.</div>'));
+      results.appendChild(el(`<div class="list-empty">
+        Никого не нашлось по «${esc(q)}».<br><br>
+        Есть ссылка-приглашение на сервер?<br>Открой её в браузере — вступишь автоматически.
+      </div>`));
     }
     return;
   }
 
-  // --- обычный список чатов ---
   searchMode = false;
   results.classList.add('hidden');
   list.classList.remove('hidden');
   list.innerHTML = '';
-  const chats = [...state.chats.values()]
+
+  const all = [...state.chats.values()]
     .sort((a, b) => new Date(b.last_message_at) - new Date(a.last_message_at));
-  if (!chats.length) {
+  const servers = all.filter((c) => c.type === 'group');
+  const personal = all.filter((c) => c.type !== 'group');
+
+  if (!all.length) {
     list.appendChild(el(`<div class="list-empty">
       Пока пусто 🙁<br><br>
-      Напиши кому-нибудь: нажми <b>поиск сверху</b>, введи ник друга<br>и открой с ним чат.<br><br>
-      Или создай <b>группу</b> кнопкой ＋.
+      <b>Личное:</b> найди человека через поиск сверху.<br>
+      <b>Серверы:</b> создай кнопкой ＋ или открой ссылку-приглашение.<br>
+      Ещё есть 🔖 — твой личный чат «Избранное».
     </div>`));
     return;
   }
-  if (!chats.some((c) => isSavedChat(c))) {
-    // подсказка про Избранное
-    list.appendChild(el(`<div class="saved-tip">
-      💡 Есть кнопка 🔖 — твой личный чат «Избранное»: заметки, ссылки, файлы. Виден только тебе.
-    </div>`));
+
+  if (personal.length) {
+    list.appendChild(el('<div class="search-section">Личное</div>'));
+    personal.forEach((c) => list.appendChild(chatRowEl(c, false)));
   }
-  chats.forEach((c) => list.appendChild(chatRowEl(c, false)));
+  if (servers.length) {
+    list.appendChild(el('<div class="search-section">Серверы</div>'));
+    servers.forEach((c) => list.appendChild(chatRowEl(c, false)));
+  }
 }
 
 function chatRowEl(chat, inSearch) {
   const meId = state.me ? state.me.id : null;
   const other = otherMember(chat, meId);
   const saved = isSavedChat(chat);
+  const isServer = chat.type === 'group';
   const title = saved ? '🔖 Избранное' : chatTitleFor(chat, meId);
-  const isOnline = !saved && chat.type === 'direct' && other && state.online.has(other.id);
+  const isOnline = !saved && !isServer && other && state.online.has(other.id);
   const unread = state.unread.get(chat.id) || 0;
   const mine = chat.last_message_sender === meId;
-  let preview = chat.last_message_text || (chat.type === 'group' ? 'Группа создана' : 'Напиши первое сообщение');
+  let preview = chat.last_message_text || (isServer ? 'Сервер создан' : 'Напиши первое сообщение');
   if (mine && chat.last_message_text) preview = 'Вы: ' + preview;
   const active = state.activeChatId === chat.id ? ' active' : '';
+
+  const av = saved
+    ? '<span class="avatar md saved-av">🔖</span>'
+    : isServer
+      ? `<span class="avatar md server-av" style="background:${serverColor(chat.id)}">${esc((chat.title || 'S')[0].toUpperCase())}</span>`
+      : avatarHTML(chat.type === 'group' ? chat.avatar_url : other?.avatar_url, title, 'md', false);
+
   const row = el(`
-    <div class="chat-row${active}" data-chat="${chat.id}">
-      ${saved
-        ? '<span class="avatar md saved-av">🔖</span>'
-        : avatarHTML(chat.type === 'group' ? chat.avatar_url : other?.avatar_url, title, 'md', false)}
+    <div class="chat-row${active}${isServer ? ' server-row' : ''}" data-chat="${chat.id}">
+      ${av}
       <div class="chat-row-main">
         <div class="chat-row-top">
           <span class="chat-row-title">${esc(title)}</span>
@@ -123,6 +137,12 @@ function chatRowEl(chat, inSearch) {
     </div>`);
   row.addEventListener('click', () => bus.emit('open-chat', chat.id));
   return row;
+}
+
+function serverColor(id) {
+  let h = 0;
+  for (const ch of String(id || '')) h = (h * 31 + ch.codePointAt(0)) % 360;
+  return `linear-gradient(135deg, hsl(${h} 55% 42%), hsl(${(h + 40) % 360} 60% 35%))`;
 }
 
 function personRowEl(p) {
@@ -152,17 +172,18 @@ function personRowEl(p) {
   return row;
 }
 
-// ---------- модалка: новая группа ----------
-export function openGroupModal() {
-  const selected = new Map(); // id -> profile
+// ---------- модалка: новый сервер ----------
+export function openServerModal() {
+  const selected = new Map();
   const m = el(`
     <div class="modal-overlay">
       <div class="modal">
-        <h3>Новая группа</h3>
-        <label class="field">Название
-          <input id="gr-title" type="text" maxlength="50" placeholder="Например: Друзья">
+        <h3>Новый сервер</h3>
+        <div class="field-hint">Сервер — это чат с каналами, ролями и ссылкой-приглашением. Как в Discord, только без VPN.</div>
+        <label class="field">Название сервера
+          <input id="gr-title" type="text" maxlength="50" placeholder="Например: Наша тусовка">
         </label>
-        <label class="field">Добавить участников
+        <label class="field">Пригласить участников
           <input id="gr-search" type="text" placeholder="Поиск по нику или имени">
         </label>
         <div id="gr-selected" class="chips"></div>
@@ -170,7 +191,7 @@ export function openGroupModal() {
         <div class="form-error" id="gr-error"></div>
         <div class="modal-actions">
           <button class="btn ghost" data-act="close">Отмена</button>
-          <button class="btn primary" id="gr-create">Создать группу</button>
+          <button class="btn primary" id="gr-create">Создать сервер</button>
         </div>
       </div>
     </div>`);
@@ -222,7 +243,7 @@ export function openGroupModal() {
 
   qs('#gr-create', m).addEventListener('click', async () => {
     const title = qs('#gr-title', m).value.trim();
-    if (!title) { qs('#gr-error', m).textContent = 'Придумай название группы.'; return; }
+    if (!title) { qs('#gr-error', m).textContent = 'Придумай название сервера.'; return; }
     const btn = qs('#gr-create', m);
     btn.disabled = true;
     try {
@@ -230,7 +251,7 @@ export function openGroupModal() {
       close();
       renderChatList();
       bus.emit('open-chat', chatId);
-      toast('Группа создана ✓');
+      toast(`Сервер «${title}» создан ✓ Канал #общий готов.`);
     } catch (e) {
       qs('#gr-error', m).textContent = e.message;
       btn.disabled = false;
@@ -240,7 +261,7 @@ export function openGroupModal() {
   setTimeout(() => qs('#gr-title', m).focus(), 50);
 }
 
-// Обновить аватарку и имя в сайдбаре (безопасно при null-профиле)
+// ---------- аватарка и имя в сайдбаре ----------
 export function renderSidebarMe() {
   const btn = qs('#profile-btn');
   if (!btn || !state.me) return;

@@ -9,13 +9,15 @@ import { initAuth, showAuth, showApp, showSetup } from './auth.js';
 import { initChatListUI, renderChatList, renderSidebarMe } from './chatlist.js';
 import {
   initChatViewUI, openChat, closeChat, onNewMessage, onMessageDeleted,
-  onMessageUpdated, onMembersUpdated, onPresenceChanged, initLightboxUI,
+  onMessageUpdated, onReactionChange, onChatUpdated, onMembersUpdated,
+  onPresenceChanged, initLightboxUI,
 } from './chatview.js';
 import { applyPrefs } from './settings.js';
 import { startPresence, stopPresence } from './presence.js';
 
 let realtimeChan = null;
 let enterPromise = null;
+let pendingJoin = null;
 
 // ================== ГЛОБАЛЬНЫЕ ОШИБКИ (чтобы видеть, что сломалось) ==================
 
@@ -58,7 +60,14 @@ async function boot() {
   // при изменении профиля — перерисовать чаты (имена и аватарки)
   bus.on('profile-synced', () => import('./chatlist.js').then((m) => m.renderChatList()));
 
-  // 3. Сессия
+  // 3. Ссылка-приглашение (?join=КОД) — обработаем после входа
+  pendingJoin = new URLSearchParams(location.search).get('join');
+  if (pendingJoin) {
+    history.replaceState(null, '', location.pathname);
+    localStorage.setItem('msp_join', pendingJoin);
+  }
+
+  // 4. Сессия
   // Ссылка восстановления пароля содержит type=recovery — пока пользователь
   // не задал новый пароль, в приложение НЕ входим ни при каких событиях.
   const params = new URLSearchParams(location.search);
@@ -144,6 +153,22 @@ async function doEnter(session) {
   startPresence();
   startRealtime();
   requestNotificationsOnFirstClick();
+
+  // вступление по ссылке-приглашению после входа
+  const joinCode = pendingJoin || localStorage.getItem('msp_join');
+  pendingJoin = null;
+  if (joinCode) {
+    localStorage.removeItem('msp_join');
+    try {
+      const chatId = await dbApi.joinByInvite(joinCode);
+      renderChatList();
+      bus.emit('open-chat', chatId);
+      const chat = state.chats.get(chatId);
+      toast(`Ты вступил(а) в «${chat ? chatTitleFor(chat) : 'сервер'}» 🎉`);
+    } catch (e) {
+      toast('Не удалось вступить: ' + e.message, 5000);
+    }
+  }
 }
 
 async function leaveApp() {
@@ -177,6 +202,14 @@ function startRealtime() {
       if (payload.old && payload.old.id) {
         bus.emit('message:deleted', payload.old.id);
         onMessageDeleted(payload.old.id);
+      }
+    })
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'reactions' }, (payload) => onReactionChange(payload, false))
+    .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'reactions' }, (payload) => onReactionChange(payload, true))
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'chats' }, (payload) => {
+      if (payload.new) {
+        onChatUpdated(payload.new);
+        renderChatList();
       }
     })
     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'chat_members' }, (payload) => onDbMemberUpdate(payload.new))
