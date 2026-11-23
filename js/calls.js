@@ -149,11 +149,14 @@ export async function startCall(chat, withVideo) {
     }
   });
 
-  // звоним (сигнал собеседнику)
+  // звоним (сигнал собеседнику); 10с защита от «повисшего» канала
   const ringChan = sb.channel(`ring-${other.id}`);
-  await sendWhenJoined(ringChan, 'ring', {
-    callId, video: withVideo, from: myName, chatId: chat.id,
-  });
+  await Promise.race([
+    sendWhenJoined(ringChan, 'ring', {
+      callId, video: withVideo, from: myName, avatar: other.avatar_url || '', chatId: chat.id,
+    }),
+    new Promise((r) => setTimeout(r, 10000)),
+  ]);
   sb.removeChannel(ringChan).catch(() => {});
 
   // свой UI
@@ -169,7 +172,7 @@ export async function startCall(chat, withVideo) {
     if (call && !call.connected) {
       sendCallEvent('call-cancel', { callId: call.id });
       cleanupCall();
-      toast('Не дозвонился');
+      toast('Не дозвонился. Попроси собеседника обновить страницу и проверь интернет');
     }
   }, 45000);
 }
@@ -230,8 +233,16 @@ async function makePeer(c, isCaller) {
     if (e.candidate) sendCallEvent('call-ice', { callId: c.id, candidate: e.candidate.toJSON() });
   };
   pc.onconnectionstatechange = () => {
-    if (['failed', 'disconnected', 'closed'].includes(pc.connectionState) && call === c) {
-      if (pc.connectionState !== 'closed') cleanupCall();
+    const st = pc.connectionState;
+    if (st === 'connecting') callStatus('Соединение…');
+    else if (st === 'connected') callStatus('Соединено ✓');
+    else if (st === 'disconnected') callStatus('Связь потеряна — восстанавливаю…');
+    else if (st === 'failed') {
+      callStatus('Ошибка соединения');
+      toast('Не удалось соединить устройства (NAT). Смени сеть (Wi‑Fi ↔ мобильный интернет) и попробуй снова', 6000);
+      if (call === c) cleanupCall();
+    } else if (st === 'closed' && call === c) {
+      cleanupCall();
     }
   };
 
@@ -299,7 +310,9 @@ function showIncomingRing(p) {
     <div class="call-overlay ring" id="ring-overlay" data-callid="${esc(p.callId)}">
       <div class="call-stage">
         <div class="call-avatar-wrap pulse">
-          <span class="avatar xl" style="background:linear-gradient(135deg,var(--accent),var(--accent2))">${esc((p.from || '?')[0].toUpperCase())}</span>
+          ${p.avatar
+    ? `<img class="avatar xl" src="${esc(p.avatar)}" alt="">`
+    : `<span class="avatar xl" style="background:linear-gradient(135deg,var(--accent),var(--accent2))">${esc((p.from || '?')[0].toUpperCase())}</span>`}
         </div>
         <div class="call-info">
           <div class="call-name">${esc(p.from || 'Неизвестный')}</div>
@@ -402,7 +415,7 @@ async function answerRing(p) {
   });
 
   call.overlay = callOverlay({
-    remote: { display_name: p.from }, incoming: true, video: p.video,
+    remote: { display_name: p.from, avatar_url: p.avatar || '' }, incoming: true, video: p.video,
   });
   bindCallControls(call);
   if (p.video) {

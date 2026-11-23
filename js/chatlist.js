@@ -4,6 +4,7 @@ import {
   qs, esc, el, bus, toast, avatarHTML, fmtListTime,
   relLastSeen, lastSeenShort, debounce,
 } from './utils.js';
+import { openProfile } from './profile.js';
 import { openSettingsModal } from './settings.js';
 
 let searchMode = false;
@@ -168,16 +169,10 @@ function personRowEl(p) {
         <div class="chat-row-bottom"><span class="chat-row-preview">@${esc(p.nickname)}</span></div>
       </div>
     </div>`);
-  row.addEventListener('click', async () => {
-    try {
-      const chatId = await dbApi.startDirect(p.id);
-      qs('#search-input').value = '';
-      searchMode = false;
-      renderChatList();
-      bus.emit('open-chat', chatId);
-    } catch (e) {
-      toast('Не получилось: ' + e.message);
-    }
+  row.addEventListener('click', () => {
+    // клик по человеку — открываем его профиль (кнопка «Написать» внутри)
+    searchMode = false;
+    openProfile(p.id);
   });
   return row;
 }
