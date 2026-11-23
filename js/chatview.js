@@ -305,9 +305,24 @@ function renderPinnedBar() {
 
 // ================== СООБЩЕНИЯ ==================
 
+// Форматирование как в Telegram: **жирный**, __курсив__, ~~зачёркнутый~~, ||спойлер||, `код`, ```блок```
+function fmt(t) {
+  // ссылки не форматируем (в них бывают __ и ~~)
+  return t.split(/(https?:\/\/[^\s<]+)/).map((part, i) => (i % 2 ? part : fmtPart(part))).join('');
+}
+function fmtPart(t) {
+  return t
+    .replace(/```([\s\S]+?)```/g, (_, c) => `<pre class="msg-pre">${c.replace(/^\n/, '')}</pre>`)
+    .replace(/`([^`\n]+)`/g, '<code class="msg-code">$1</code>')
+    .replace(/\*\*([^*\n][^\n]*?)\*\*/g, '<b>$1</b>')
+    .replace(/__([^_\n][^\n]*?)__/g, '<i>$1</i>')
+    .replace(/~~([^~\n][^\n]*?)~~/g, '<s>$1</s>')
+    .replace(/\|\|([^|\n][^\n]*?)\|\|/g, '<span class="spoiler" title="Нажми, чтобы показать">$1</span>');
+}
+
 function linkify(escaped) {
   const myNick = (state.me?.nickname || '').toLowerCase();
-  return escaped.replace(/(https?:\/\/[^\s<]+[^\s<.,:;"')\]!?])/g,
+  return fmt(escaped).replace(/(https?:\/\/[^\s<]+[^\s<.,:;"')\]!?])/g,
     '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>')
     .replace(/(^|[\s(>])@([\p{L}\p{N}_]{3,20})/gu, (all, pre, nick) =>
       `${pre}<span class="mention${nick.toLowerCase() === myNick ? ' me' : ''}">@${nick}</span>`);
@@ -1585,3 +1600,7 @@ export function initLightboxUI() {
 // ---------- доступ для модулей v18 ----------
 export function getLoadedMessages() { return msgs; }
 export function refreshMessages() { renderMessages(false); }
+
+// ---------- v19: действия для жестов и палитры команд ----------
+export function replyToMessage(msgId) { doAction('reply', msgId); }
+export function quickReact(msgId, emoji) { return dbApi.toggleReaction(msgId, emoji); }

@@ -10,6 +10,7 @@ import { initAI, openAssistant } from './ai.js';
 import { initGifs } from './gif.js';
 import { openFriends } from './friends.js';
 import { forceLogout } from './api-v18.js';
+import { v19Boot, v19Enter, v19Leave } from './v19.js';
 
 let chan = null;
 let timers = [];
@@ -18,6 +19,7 @@ let wired = false;
 // один раз при запуске страницы
 export function v18Boot() {
   mountIcons();
+  try { v19Boot(); } catch (e) { console.error('v19Boot:', e); }
   if (wired) return;
   wired = true;
   qs('#nav-friends')?.addEventListener('click', () => openFriends('friends'));
@@ -45,6 +47,7 @@ export function ackDelivered(chatId) {
 // при входе в аккаунт
 export async function v18Enter() {
   initNotices();
+  try { v19Enter(); } catch (e) { console.warn('v19Enter:', e); }
   dbApi.loadFriends().catch(() => {});
   dbApi.registerSession().catch(() => {});
   dbApi.markDelivered().catch(() => {});
@@ -62,6 +65,7 @@ export async function v18Enter() {
 }
 
 export function v18Leave() {
+  try { v19Leave(); } catch { /* */ }
   timers.forEach(clearInterval); timers = [];
   window.removeEventListener('focus', onFocus);
   if (chan) { getSb().removeChannel(chan).catch(() => {}); chan = null; }

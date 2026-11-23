@@ -8,6 +8,7 @@ import { openProfile } from './profile.js';
 import { openSettingsModal } from './settings.js';
 import { presenceLabel, presenceKind } from './api-v18.js';
 import { appendGlobalResults } from './gsearch.js';
+import { inFolder, folderChipsHTML, openFolderEditor, folderExists } from './folders.js';
 
 let listFilter = 'all';          // all | direct | groups | unread
 const FILTERS = [['all', 'Все'], ['unread', 'Непрочитанные'], ['direct', 'Личные'], ['groups', 'Группы']];
@@ -121,7 +122,8 @@ export function renderChatList() {
   const passes = (c) => (listFilter === 'all')
     || (listFilter === 'unread' && (state.unread.get(c.id) || 0) > 0)
     || (listFilter === 'direct' && c.type !== 'group')
-    || (listFilter === 'groups' && c.type === 'group');
+    || (listFilter === 'groups' && c.type === 'group')
+    || (listFilter.startsWith('f:') && inFolder(listFilter, c));
   const active = all.filter((c) => !myFlags(c).archived && passes(c));
   const archived = all.filter((c) => myFlags(c).archived);
   const pinnedSet = new Set(active.filter((c) => myFlags(c).pinned).map((c) => c.id));
@@ -224,12 +226,16 @@ function renderFilters() {
   const box = qs('#list-filters');
   if (!box) return;
   const totalUnread = [...state.unread.values()].reduce((a, b) => a + b, 0);
-  box.innerHTML = FILTERS.map(([k, l]) => `<button class="lf-chip${listFilter === k ? ' on' : ''}" data-f="${k}">${l}${k === 'unread' && totalUnread ? ` <b>${totalUnread > 99 ? '99+' : totalUnread}</b>` : ''}</button>`).join('');
+  if (listFilter.startsWith('f:') && !folderExists(listFilter)) listFilter = 'all';
+  box.innerHTML = FILTERS.map(([k, l]) => `<button class="lf-chip${listFilter === k ? ' on' : ''}" data-f="${k}">${l}${k === 'unread' && totalUnread ? ` <b>${totalUnread > 99 ? '99+' : totalUnread}</b>` : ''}</button>`).join('') + folderChipsHTML(listFilter);
   if (!box._wired) {
     box._wired = true;
     box.addEventListener('click', (e) => {
       const b = e.target.closest('[data-f]'); if (!b) return;
-      listFilter = b.dataset.f; renderChatList();
+      const k = b.dataset.f;
+      if (k === '__new') { openFolderEditor(null, (f) => { listFilter = f || 'all'; renderChatList(); }); return; }
+      if (k === '__edit') { openFolderEditor(listFilter.slice(2), (f) => { listFilter = f || 'all'; renderChatList(); }); return; }
+      listFilter = k; renderChatList();
     });
   }
 }

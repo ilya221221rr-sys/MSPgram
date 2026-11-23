@@ -2,6 +2,7 @@
 import { state, dbApi, storeApi, authApi } from './api.js';
 import { openAdminPanel } from './admin.js';
 import { mountExtraSettings } from './extras.js';
+import { mountAppearance } from './appearance.js';
 import {
   qs, esc, el, toast, avatarHTML, getPrefs, setPrefs, confirmDialog,
 } from './utils.js';
@@ -138,6 +139,7 @@ export function openSettingsModal() {
 
   document.querySelector('#modal-root').appendChild(m);
   try { mountExtraSettings(m); } catch (e) { console.warn('extras:', e); }
+  try { mountAppearance(m); } catch (e) { console.warn('appearance:', e); }
   const close = () => m.remove();
   m.addEventListener('click', (e) => { if (e.target === m || e.target.closest('[data-act=close]')) close(); });
 

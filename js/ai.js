@@ -7,9 +7,8 @@ import { state, memberProfile, chatTitleFor, dbApi } from './api.js';
 import { qs, esc, el, toast, getPrefs, setPrefs } from './utils.js';
 import { icon } from './icons.js';
 import { getLoadedMessages, refreshMessages } from './chatview.js';
+import { aiComplete } from './ai-core.js';
 
-const DEFAULT_URL = 'https://text.pollinations.ai/openai';
-const DEFAULT_MODEL = 'openai-fast';
 const SYSTEM = 'Ты — MSP AI, дружелюбный и толковый ассистент внутри мессенджера MSPgram. '
   + 'Отвечай по делу и кратко, на языке пользователя (по умолчанию — русский). Не выдумывай факты.';
 
@@ -28,32 +27,8 @@ export function translationHTML(id) {
   return `<div class="msg-translation"><span class="tr-lang">🌐 ${esc(t.lang.toUpperCase())}</span>${esc(t.text).replaceAll('\n', '<br>')}</div>`;
 }
 
-// ---------- ядро ----------
-export async function aiComplete(messages, { temperature = 0.6, timeoutMs = 45000 } = {}) {
-  const p = getPrefs();
-  const url = (p.aiUrl || '').trim() || DEFAULT_URL;
-  const headers = { 'Content-Type': 'application/json' };
-  if (p.aiKey) headers.Authorization = `Bearer ${p.aiKey.trim()}`;
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
-  try {
-    const res = await fetch(url, {
-      method: 'POST', headers, signal: ctrl.signal,
-      body: JSON.stringify({ model: (p.aiModel || '').trim() || DEFAULT_MODEL, messages, temperature }),
-    });
-    if (!res.ok) throw new Error(`ИИ-сервер ответил ${res.status}`);
-    const data = await res.json();
-    let text = data?.choices?.[0]?.message?.content || '';
-    text = text.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
-    if (!text) throw new Error('Пустой ответ');
-    return text;
-  } catch (e) {
-    if (e.name === 'AbortError') throw new Error('ИИ отвечает слишком долго. Попробуй ещё раз.');
-    throw new Error(e.message === 'Failed to fetch'
-      ? 'Нет связи с ИИ-сервером. Проверь интернет или укажи свой endpoint в Настройках → ИИ.'
-      : e.message);
-  } finally { clearTimeout(timer); }
-}
+// ---------- ядро: см. ai-core.js (адрес, запасные модели, журнал ошибок) ----------
+export { aiComplete };
 
 function renderMd(s) {
   return esc(s)

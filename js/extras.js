@@ -7,6 +7,8 @@ import { qs, esc, el, toast, getPrefs, setPrefs, confirmDialog, SOUNDS, beep, av
 import { applyPrefs } from './settings.js';
 import { trackMe } from './presence.js';
 import { showQr } from './profile.js';
+import { openAiDiag, AI_PRESETS } from './ai-diag.js';
+import { normalizeAiUrl } from './ai-core.js';
 
 const STATUSES = [
   ['online', 'В сети', '#3dd68c'], ['away', 'Отошёл', '#f5b73d'],
@@ -60,9 +62,14 @@ export function mountExtraSettings(m) {
 
     <div class="settings-sec">ИИ и GIF</div>
     <div class="field-hint">По умолчанию ИИ работает бесплатно. Можно подключить свой OpenAI-совместимый сервис.</div>
-    <label class="field">Адрес API (необязательно)<input id="x-aiurl" value="${esc(prefs.aiUrl || '')}" placeholder="https://api.openai.com/v1/chat/completions"></label>
-    <label class="field">Ключ API<input id="x-aikey" type="password" value="${esc(prefs.aiKey || '')}" placeholder="sk-…"></label>
-    <label class="field">Модель<input id="x-aimodel" value="${esc(prefs.aiModel || '')}" placeholder="openai-fast"></label>
+    <div class="inline wrap" style="margin:6px 0 4px">
+      <button class="btn ghost sm" id="x-ai-or" type="button">⚡ OpenRouter Free</button>
+      <button class="btn ghost sm" id="x-ai-pl" type="button">Pollinations</button>
+      <button class="btn ghost sm" id="x-ai-diag" type="button">🩺 Диагностика</button>
+    </div>
+    <label class="field">Адрес API (необязательно)<input id="x-aiurl" value="${esc(prefs.aiUrl || '')}" placeholder="https://openrouter.ai/api/v1/chat/completions"></label>
+    <label class="field">Ключ API<input id="x-aikey" type="password" value="${esc(prefs.aiKey || '')}" placeholder="sk-or-v1-… / sk-…"></label>
+    <label class="field">Модель<input id="x-aimodel" value="${esc(prefs.aiModel || '')}" placeholder="openrouter/free"></label>
     <label class="field">Ключ Giphy (для GIF)<input id="x-giphy" value="${esc(prefs.giphyKey || '')}" placeholder="бесплатно на developers.giphy.com"></label>
     <button class="btn ghost sm" id="x-ai-save" style="margin-top:8px">Сохранить</button>
 
@@ -108,8 +115,19 @@ export function mountExtraSettings(m) {
   qs('#x-ai-save', host).addEventListener('click', () => {
     setPrefs({ aiUrl: qs('#x-aiurl', host).value.trim(), aiKey: qs('#x-aikey', host).value.trim(),
       aiModel: qs('#x-aimodel', host).value.trim(), giphyKey: qs('#x-giphy', host).value.trim() });
-    toast('Сохранено ✓');
+    const n = normalizeAiUrl(qs('#x-aiurl', host).value);
+    if (n.fixed) { qs('#x-aiurl', host).value = n.url; setPrefs({ aiUrl: n.url }); toast('Сохранено. ' + n.note, 5000); } else toast('Сохранено ✓');
   });
+  const applyPreset = (k) => {
+    const pr = AI_PRESETS[k];
+    qs('#x-aiurl', host).value = pr.aiUrl; qs('#x-aimodel', host).value = pr.aiModel;
+    if (pr.clearKey) qs('#x-aikey', host).value = '';
+    setPrefs({ aiUrl: pr.aiUrl, aiModel: pr.aiModel, ...(pr.clearKey ? { aiKey: '' } : {}) });
+    toast(k === 'openrouter' && !qs('#x-aikey', host).value ? 'Вставь ключ sk-or-v1-… и нажми «Сохранить»' : `${pr.label} ✓`, 4500);
+  };
+  qs('#x-ai-or', host).addEventListener('click', () => applyPreset('openrouter'));
+  qs('#x-ai-pl', host).addEventListener('click', () => applyPreset('pollinations'));
+  qs('#x-ai-diag', host).addEventListener('click', openAiDiag);
   // --- пароль
   qs('#x-pw-save', host).addEventListener('click', async () => {
     const pw = qs('#x-pw', host).value;

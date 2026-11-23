@@ -4,6 +4,7 @@
 // ============================================================
 import { state, dbApi } from './api.js';
 import { esc, el, avatarHTML, relLastSeen, toast } from './utils.js';
+import { EXTRA_TABS, renderUsersTab, renderExtraTab, audit } from './admin2.js';
 
 const ADMIN_BADGE = (p) => {
   const badges = [];
@@ -35,6 +36,7 @@ export async function openAdminPanel() {
           ${isAdm ? '<button class="adm-tab" data-tab="log">Переписка</button><button class="adm-tab" data-tab="groups">Сообщества</button>' : ''}
           <button class="adm-tab" data-tab="reports">Жалобы</button>
           <button class="adm-tab" data-tab="stats">Статистика</button>
+          ${EXTRA_TABS.filter(([, , onlyAdm]) => isAdm || !onlyAdm).map(([k, l]) => `<button class="adm-tab" data-tab="${k}">${l}</button>`).join('')}
         </div>
         <div class="adm-body" id="adm-body"></div>
         <div class="modal-actions">
@@ -50,94 +52,8 @@ export async function openAdminPanel() {
 
   const body = qs2('#adm-body', m);
 
-  // ---------- вкладка Пользователи ----------
-  async function renderUsers() {
-    body.innerHTML = '<div class="adm-empty">Загрузка…</div>';
-    let users;
-    try { users = await dbApi.adminListUsers(); }
-    catch (e) { body.innerHTML = `<div class="adm-empty">${esc(e.message)}</div>`; return; }
-
-    body.innerHTML = '';
-    users.forEach((p) => {
-      const isBanned = p.is_banned && (!p.banned_until || new Date(p.banned_until) > new Date());
-      const row = el(`
-        <div class="adm-user-row">
-          ${avatarHTML(p.avatar_url, p.display_name || p.nickname, 'md', false)}
-          <div class="adm-user-main">
-            <div class="adm-user-name">${esc(p.display_name || p.nickname)} ${ADMIN_BADGE(p)}</div>
-            <div class="adm-user-sub">@${esc(p.nickname)} · ${esc(relLastSeen(p.last_seen, state.online.has(p.id)))}</div>
-            ${isBanned ? `<div class="adm-user-sub danger">Причина: ${esc(p.ban_reason || 'не указана')}${p.banned_until ? ` · до ${new Date(p.banned_until).toLocaleString('ru')}` : ' · навсегда'}</div>` : ''}
-          </div>
-          <div class="adm-user-actions">
-            ${isAdm ? `<button class="adm-btn" data-act="role" data-id="${p.id}" title="Роль: пользователь / модератор / админ">🎖</button>
-            <button class="adm-btn" data-act="rename" data-id="${p.id}" title="Изменить имя и юзернейм">✏️</button>` : ''}
-            <button class="adm-btn ${isBanned ? 'ok' : 'danger'}" data-act="ban" data-id="${p.id}" data-banned="${isBanned ? 1 : 0}">${isBanned ? '✅' : '🚫'}</button>
-          </div>
-        </div>`);
-      body.appendChild(row);
-    });
-
-    body.querySelectorAll('[data-act=role]').forEach((btn) => {
-      btn.addEventListener('click', async () => {
-        const p = users.find((x) => x.id === btn.dataset.id);
-        if (p.id === state.me.id) { toast('Свою роль менять нельзя'); return; }
-        const cur = p.is_admin ? 3 : p.is_moderator ? 2 : 1;
-        const v = window.prompt(`Роль для ${p.display_name || p.nickname}:\n1 — пользователь\n2 — модератор (жалобы и баны)\n3 — администратор (полный доступ)`, String(cur));
-        if (v === null) return;
-        const n = parseInt(v, 10);
-        if (![1, 2, 3].includes(n)) { toast('Введи 1, 2 или 3'); return; }
-        try {
-          await dbApi.adminSetRole(p.id, { is_admin: n === 3, is_moderator: n === 2 });
-          toast('Роль обновлена ✓'); renderUsers();
-        } catch (e) { toast('Ошибка: ' + e.message); }
-      });
-    });
-
-    body.querySelectorAll('[data-act=rename]').forEach((btn) => {
-      btn.addEventListener('click', async () => {
-        const p = users.find((x) => x.id === btn.dataset.id);
-        const newName = window.prompt('Новое имя пользователя:', p.display_name || '');
-        if (newName === null) return;
-        const newNick = window.prompt('Новый юзернейм (без @, латиница):', p.nickname || '');
-        if (newNick === null) return;
-        try {
-          const patch = {};
-          if (newName.trim()) patch.display_name = newName.trim();
-          if (newNick.trim()) patch.nickname = newNick.trim().toLowerCase().replace(/[^a-z0-9_]/g, '');
-          if (!Object.keys(patch).length) return;
-          await dbApi.adminUpdateProfile(p.id, patch);
-          toast('Профиль обновлён ✓');
-          renderUsers();
-        } catch (e) { toast('Ошибка: ' + e.message); }
-      });
-    });
-
-    body.querySelectorAll('[data-act=ban]').forEach((btn) => {
-      btn.addEventListener('click', async () => {
-        const p = users.find((x) => x.id === btn.dataset.id);
-        if (btn.dataset.banned === '1') {
-          if (!window.confirm(`Разбанить ${p.display_name || p.nickname}?`)) return;
-          try { await dbApi.adminSetBan(p.id, false); toast('Разбанен ✓'); renderUsers(); }
-          catch (e) { toast('Ошибка: ' + e.message); }
-          return;
-        }
-        if (p.id === state.me.id) { toast('Себя банить нельзя 🙂'); return; }
-        const reason = window.prompt(`Бан ${p.display_name || p.nickname}.\nПричина (можно пусто):`, '') ?? null;
-        if (reason === null) return; // отмена
-        const daysRaw = window.prompt('На сколько дней? (пусто = навсегда):', '7');
-        if (daysRaw === null) return;
-        const days = parseInt(daysRaw, 10);
-        const until = Number.isFinite(days) && days > 0
-          ? new Date(Date.now() + days * 86400000).toISOString()
-          : null;
-        try {
-          await dbApi.adminSetBan(p.id, true, reason.trim() || null, until);
-          toast(`Забанен ${until ? `до ${new Date(until).toLocaleDateString('ru')}` : 'навсегда'} ✓`);
-          renderUsers();
-        } catch (e) { toast('Ошибка: ' + e.message); }
-      });
-    });
-  }
+  // ---------- вкладка Пользователи (v19: см. admin2.js) ----------
+  const renderUsers = () => renderUsersTab(body, { isAdm });
 
   // ---------- вкладка Переписка ----------
   let chatsCache = [];
@@ -182,7 +98,7 @@ export async function openAdminPanel() {
           b.addEventListener('click', async () => {
             if (!window.confirm('Удалить это сообщение?')) return;
             try {
-              await dbApi.deleteMessage(b.dataset.del);
+              await dbApi.deleteMessage(b.dataset.del); audit('delete_message', b.dataset.del);
               b.closest('.adm-msg').remove();
               toast('Удалено ✓');
             } catch (e) { toast('Ошибка: ' + e.message); }
@@ -247,6 +163,7 @@ export async function openAdminPanel() {
             await dbApi.adminSetBan(uid, true, 'По жалобе из админ-панели',
               days ? new Date(Date.now() + days * 86400000).toISOString() : null);
             if (b.dataset.rid) await dbApi.adminSetReportStatus(b.dataset.rid, 'banned');
+            audit('ban', uid, { by: 'report', days });
             toast(`Забанен ${days ? 'на 7 дней' : 'навсегда'} ✓`);
           }
           renderReports();
@@ -307,7 +224,7 @@ export async function openAdminPanel() {
       });
       row.querySelector('[data-act=del]').addEventListener('click', async () => {
         if (!window.confirm(`Удалить «${c.title}» вместе с историей? Это необратимо.`)) return;
-        try { await dbApi.adminDeleteChat(c.id); toast('Удалено ✓'); renderGroups(); }
+        try { await dbApi.adminDeleteChat(c.id); audit('delete_chat', c.title || c.id); toast('Удалено ✓'); renderGroups(); }
         catch (e) { toast('Ошибка: ' + e.message); }
       });
       body.appendChild(row);
@@ -323,7 +240,8 @@ export async function openAdminPanel() {
       else if (tab.dataset.tab === 'log') renderLog();
       else if (tab.dataset.tab === 'groups') renderGroups();
       else if (tab.dataset.tab === 'reports') renderReports();
-      else renderStats();
+      else if (tab.dataset.tab === 'stats') renderStats();
+      else renderExtraTab(tab.dataset.tab, body, {});
     });
   });
 
