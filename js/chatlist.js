@@ -103,10 +103,6 @@ export function renderChatList() {
   list.classList.remove('hidden');
   list.innerHTML = '';
 
-  const myFlags = (c) => {
-    const mine = (c.members || []).find((x) => x.user_id === state.me.id);
-    return { pinned: !!mine?.pinned, archived: !!mine?.archived, muted: !!mine?.muted };
-  };
   const all = [...state.chats.values()]
     .sort((a, b) => new Date(b.last_message_at) - new Date(a.last_message_at));
   const active = all.filter((c) => !myFlags(c).archived);
@@ -231,6 +227,12 @@ function personRowEl(p) {
     openProfile(p.id);
   });
   return row;
+}
+
+// ---------- флаги моего участия в чате (закреп/архив/мьют) ----------
+function myFlags(c) {
+  const mine = (c.members || []).find((x) => x.user_id === state.me?.id);
+  return { pinned: !!mine?.pinned, archived: !!mine?.archived, muted: !!mine?.muted };
 }
 
 // ---------- история поиска ----------
