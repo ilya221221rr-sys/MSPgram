@@ -14,6 +14,7 @@ import { getSb, state, otherMember, memberProfile, chatTitleFor, isSavedChat, db
 import { el, qs, toast, avatarHTML, esc, fmtDuration } from './utils.js';
 import { icon } from './icons.js';
 import { callBody } from './callcard.js';
+import { startRingtone, stopRingtone } from './ringtone.js';
 
 const ICE = {
   iceServers: [
@@ -320,6 +321,7 @@ function markConnected(c) {
   if (c.connected) return;
   c.connected = true;
   c.startedAt = Date.now();
+  stopRingtone();
   clearTimeout(c.ringTimeout);
   c.overlay?.classList.add('connected');
   startTimer(c);
@@ -471,10 +473,12 @@ export async function startCall(chat, withVideo) {
   callOverlay(c, { remote: other, incoming: false });
   bindCallControls(c);
   syncUI(c);
+  startRingtone('out'); // гудки, пока собеседник не ответил
 
   wireCommon(chan, c)
     .on('broadcast', { event: 'call-accept' }, async ({ payload }) => {
       if (call !== c || payload.callId !== c.id || c.pc) return; // c.pc: защита от двойного accept
+      stopRingtone(); // собеседник ответил — гудки замолкают
       callStatus('Соединение…');
       await makePeerCaller(c);
     })
@@ -568,7 +572,7 @@ function subscribeRing() {
     showIncomingRing(payload);
   }).on('broadcast', { event: 'call-cancel' }, ({ payload }) => {
     const ov = qs('#ring-overlay');
-    if (ov && payload && ov.dataset.callid === payload.callId) ov.remove();
+    if (ov && payload && ov.dataset.callid === payload.callId) { ov.remove(); stopRingtone(); }
   }).subscribe((status) => {
     // если канал входящих умер — через 2 сек пересоздаём (иначе звонки не доходят)
     if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
@@ -598,16 +602,24 @@ function showIncomingRing(p) {
       </div>
     </div>`);
   document.body.appendChild(o);
+  // рингтон + вибрация (+ системное уведомление, если приложение свёрнуто)
+  startRingtone('in', {
+    title: `${p.from || 'Кто-то'} звонит`,
+    body: p.video ? '📹 Входящий видеозвонок' : '📞 Входящий звонок',
+  });
   o.querySelector('#ring-reject').addEventListener('click', () => {
+    stopRingtone();
     rejectRing(p);
     o.remove();
   });
   o.querySelector('#ring-accept').addEventListener('click', async () => {
+    stopRingtone();
     o.remove();
     await answerRing(p);
   });
   setTimeout(() => {
     if (qs(`#ring-overlay[data-callid="${p.callId}"]`)) {
+      stopRingtone();
       rejectRing(p, { timeout: true });
       o.remove();
     }
@@ -737,6 +749,7 @@ function cleanupCall(outcome = 'ended') {
   const c = call;
   if (!c) return;
   call = null; // сначала обнуляем: обработчики состояния WebRTC дальше сами выйдут
+  stopRingtone();
   clearInterval(c.timer);
   clearTimeout(c.ringTimeout);
   clearTimeout(c.discTimer);

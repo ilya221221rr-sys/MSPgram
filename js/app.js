@@ -6,6 +6,8 @@ import {
 } from './api.js';
 import { qs, bus, toast, beep, getPrefs } from './utils.js';
 import { v20Boot } from './v20.js';
+import { v21Boot } from './v21.js';
+import { showSystemNotification, askNotifyPermissionOnTap } from './push.js';
 import { v18Boot, v18Enter, v18Leave, onIncomingMessage, onIncomingReaction } from './v18.js';
 import { ensureMfa } from './extras.js';
 import { initAuth, showAuth, showApp, showSetup } from './auth.js';
@@ -40,6 +42,7 @@ async function boot() {
   applyPrefs();
   try { v18Boot(); } catch (e) { console.error('v18Boot:', e); }
   try { v20Boot(); } catch (e) { console.error('v20Boot:', e); }
+  try { v21Boot((id) => openChat(id)); } catch (e) { console.error('v21Boot:', e); }
 
   // 1. Конфигурация Supabase
   const cfg = resolveConfig();
@@ -450,33 +453,21 @@ async function onDbNewChat(row) {
 
 function showNotification(chat, m) {
   if (getPrefs()._dnd) return; // статус «не беспокоить»
-  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  // приложение открыто и на экране — хватит плашки внутри приложения
+  if (document.visibilityState === 'visible' && document.hasFocus()) return;
   const sender = memberProfile(chat, m.sender_id);
   const senderName = sender ? (sender.display_name || `@${sender.nickname}`) : 'Новое сообщение';
   const title = chat.type === 'group' ? `${chatTitleFor(chat)} · ${senderName}` : senderName;
   const body = m.body
     || ({ image: '📷 Фото', video: '🎥 Видеосообщение', voice: '🎤 Голосовое сообщение', file: '📎 Файл' }[m.attachment_type] || '');
-  try {
-    const n = new Notification(title, {
-      body,
-      icon: 'icons/icon-192.png',
-      tag: 'msp-' + m.chat_id,
-    });
-    n.onclick = () => {
-      window.focus();
-      openChat(m.chat_id);
-      n.close();
-    };
-  } catch { /* уведомления недоступны */ }
+  // v21: через Service Worker — единственный способ, который работает на Android / в APK
+  showSystemNotification({
+    title, body, tag: 'msp-' + m.chat_id, chatId: m.chat_id, renotify: true,
+  });
 }
 
 function requestNotificationsOnFirstClick() {
-  if (!('Notification' in window) || Notification.permission !== 'default') return;
-  const ask = () => {
-    document.removeEventListener('click', ask);
-    Notification.requestPermission().catch(() => {});
-  };
-  document.addEventListener('click', ask, { once: true });
+  askNotifyPermissionOnTap();
 }
 
 // ================== СОБЫТИЯ ИНТЕРФЕЙСА ==================

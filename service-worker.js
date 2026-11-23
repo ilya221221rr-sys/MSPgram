@@ -1,7 +1,7 @@
 // Service Worker: офлайн-кэш интерфейса (PWA)
 // Стратегия: сеть — всегда первая (свежий код гарантированно),
 // кэш используется только когда интернета нет.
-const VERSION = 'mspgram-v20';
+const VERSION = 'mspgram-v21';
 const PRECACHE = [
   './',
   './index.html',
@@ -9,6 +9,7 @@ const PRECACHE = [
   './css/v18.css',
   './css/v19.css',
   './css/v20.css',
+  './css/v21.css',
   './js/config.js',
   './js/vendor/supabase.js',
   './manifest.webmanifest',
@@ -56,4 +57,35 @@ self.addEventListener('fetch', (event) => {
         || Response.error();
     }
   })());
+});
+
+// ---------- v21: клик по системному уведомлению ----------
+// Открываем приложение (или возвращаемся в него) и просим открыть нужный чат.
+self.addEventListener('notificationclick', (event) => {
+  const n = event.notification;
+  const data = n.data || {};
+  n.close();
+  event.waitUntil((async () => {
+    const list = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    let client = list.find((c) => 'focus' in c) || null;
+    if (client) {
+      try { await client.focus(); } catch { /* */ }
+    } else if (self.clients.openWindow) {
+      client = await self.clients.openWindow(data.url || './');
+    }
+    if (client && data.chatId) {
+      // небольшая задержка: если окно только что открылось — дать приложению загрузиться
+      setTimeout(() => client.postMessage({ type: 'open-chat', chatId: data.chatId }), list.length ? 0 : 2500);
+    }
+  })());
+});
+
+// Задел под настоящий Web Push (когда появится серверная отправка)
+self.addEventListener('push', (event) => {
+  let d = {};
+  try { d = event.data ? event.data.json() : {}; } catch { d = { title: 'MSPgram', body: event.data ? event.data.text() : '' }; }
+  event.waitUntil(self.registration.showNotification(d.title || 'MSPgram', {
+    body: d.body || '', icon: 'icons/icon-192.png', badge: 'icons/icon-192.png',
+    tag: d.tag || undefined, data: { chatId: d.chatId || null, url: './' }, vibrate: [200, 100, 200],
+  }));
 });

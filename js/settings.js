@@ -6,6 +6,8 @@ import { mountAppearance } from './appearance.js';
 import {
   qs, esc, el, toast, avatarHTML, getPrefs, setPrefs, confirmDialog,
 } from './utils.js';
+import { previewRingtone } from './ringtone.js';
+import { showSystemNotification } from './push.js';
 
 const ACCENTS = {
   ocean: { label: 'Океан', a: '#5b8cff', b: '#7c5bff', out: 'linear-gradient(135deg,#3e63dd,#4d43d8)' },
@@ -83,6 +85,16 @@ export function openSettingsModal() {
             <div class="settings-row-sub">Короткий сигнал при новом сообщении</div>
           </div>
           <label class="switch"><input type="checkbox" id="st-sound" ${prefs.sound === false ? '' : 'checked'}><span></span></label>
+        </div>
+        <div class="settings-row">
+          <div>
+            <div class="settings-row-title">Рингтон звонка 🔔</div>
+            <div class="settings-row-sub">Мелодия, когда тебе звонят, и гудки, когда звонишь ты</div>
+          </div>
+          <div style="display:flex;gap:10px;align-items:center;flex:none">
+            <button class="btn ghost sm" id="st-ring-test" type="button">▶</button>
+            <label class="switch"><input type="checkbox" id="st-ringtone" ${prefs.ringtone === false ? '' : 'checked'}><span></span></label>
+          </div>
         </div>
         <div class="settings-row">
           <div>
@@ -217,6 +229,12 @@ export function openSettingsModal() {
     toast(e.target.checked ? 'Звук включён 🔊' : 'Звук выключен 🔇');
   });
 
+  qs('#st-ringtone', m).addEventListener('change', (e) => {
+    setPrefs({ ringtone: e.target.checked });
+    toast(e.target.checked ? 'Рингтон включён 🔔' : 'Рингтон выключен 🔕');
+  });
+  qs('#st-ring-test', m).addEventListener('click', () => previewRingtone());
+
   const pushBtn = qs('#st-push-btn', m);
   const pushSub = qs('#st-push-sub', m);
   const renderPush = () => {
@@ -243,7 +261,10 @@ export function openSettingsModal() {
   pushBtn.addEventListener('click', async () => {
     const res = await Notification.requestPermission();
     renderPush();
-    if (res === 'granted') toast('Уведомления включены 🔔');
+    if (res === 'granted') {
+      toast('Уведомления включены 🔔');
+      showSystemNotification({ title: 'MSPgram', body: 'Уведомления работают ✓', tag: 'msp-test' });
+    }
   });
 
   // ---------- внешний вид ----------
