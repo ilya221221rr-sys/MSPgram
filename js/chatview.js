@@ -978,7 +978,13 @@ async function openChatInfo() {
           <h3>${esc(other ? (other.display_name || other.nickname) : 'Пользователь')}</h3>
           <div class="info-nick">@${esc(other?.nickname || '')}</div>
           <div class="info-status ${online ? 'on' : ''}">${esc(relLastSeen(other?.last_seen, online))}</div>
+          ${other?.status_text ? `<p class="modal-text">«${esc(other.status_text)}»</p>` : ''}
           ${other?.bio ? `<p class="modal-text">${esc(other.bio)}</p>` : ''}
+          <div class="chat-flag-row">
+            <button class="chat-flag" data-flag="pinned" title="Чат всегда наверху списка">📌 Закрепить</button>
+            <button class="chat-flag" data-flag="muted" title="Без звука и всплывашек">🔕 Без звука</button>
+            <button class="chat-flag" data-flag="archived" title="Скрыть в архив">🗄 В архив</button>
+          </div>
           <div class="modal-actions">
             <button class="btn danger" id="ci-delete">Удалить чат</button>
             <button class="btn ghost" data-act="close">Закрыть</button>
@@ -989,6 +995,17 @@ async function openChatInfo() {
     document.querySelector('#modal-root').appendChild(m);
     m.addEventListener('click', async (e) => {
       if (e.target === m || e.target.closest('[data-act=close]')) m.remove();
+      if (e.target.closest('.chat-flag')) {
+        const flag = e.target.closest('.chat-flag').dataset.flag;
+        const mine = (chat.members || []).find((x) => x.user_id === meId) || {};
+        await dbApi.setChatFlags(chat.id, { [flag]: !mine[flag] });
+        e.target.classList.toggle('on');
+        renderChatListBadge();
+        toast(flag === 'pinned' ? (mine.pinned ? 'Откреплён' : 'Закреплён 📌')
+          : flag === 'muted' ? (mine.muted ? 'Звук включён 🔊' : 'Без звука 🔕')
+          : (mine.archived ? 'Возвращён из архива' : 'В архиве 🗄'));
+        return;
+      }
       if (e.target.closest('#ci-delete')) {
         const ok = await confirmDialog({ title: 'Удалить чат?', text: 'История пропадёт у обоих. Это не удалит аккаунт собеседника.' });
         if (!ok) return;
@@ -1034,6 +1051,12 @@ async function openChatInfo() {
         </label>
         <div id="ci-results" class="gr-results"></div>
         <div class="form-error" id="ci-error"></div>
+        <div class="chat-flag-row">
+          <button class="chat-flag" data-flag="pinned" title="Чат всегда наверху списка">📌 Закрепить</button>
+          <button class="chat-flag" data-flag="muted" title="Без звука и всплывашек">🔕 Без звука</button>
+          <button class="chat-flag" data-flag="archived" title="Скрыть в архив">🗄 В архив</button>
+          ${isOwner ? `<button class="chat-flag" id="ci-public" title="Сервер виден всем в разделе «Сообщества»">🌐 Публичный</button>` : ''}
+        </div>
         <div class="modal-actions">
           ${mod ? '<button class="btn primary" id="ci-invite">🔗 Ссылка-приглашение</button>' : ''}
           <button class="btn ghost" data-act="close">Закрыть</button>
@@ -1041,6 +1064,16 @@ async function openChatInfo() {
         </div>
       </div>
     </div>`);
+
+  // подсветить включённые флаги
+  {
+    const mine = (chat.members || []).find((x) => x.user_id === meId) || {};
+    m.querySelectorAll('.chat-flag[data-flag]').forEach((b) => {
+      if (mine[b.dataset.flag]) b.classList.add('on');
+    });
+    const pub = qs('#ci-public', m);
+    if (pub && chat.is_public) pub.classList.add('on');
+  }
 
   document.querySelector('#modal-root').appendChild(m);
   m.addEventListener('click', (e) => {
@@ -1069,6 +1102,30 @@ async function openChatInfo() {
 
   // повысить до админа
   m.addEventListener('click', async (e) => {
+    // флаги чата (закреп/мьют/архив/публичность)
+    const flagBtn = e.target.closest('.chat-flag');
+    if (flagBtn) {
+      const mine = (chat.members || []).find((x) => x.user_id === meId) || {};
+      if (flagBtn.id === 'ci-public') {
+        const next = !chat.is_public;
+        try {
+          await dbApi.setServerPublic(chat.id, next);
+          flagBtn.classList.toggle('on', next);
+          toast(next ? 'Сервер виден всем в «Сообществах» 🌐' : 'Сервер снова приватный 🔒');
+        } catch (err) { qs('#ci-error', m).textContent = err.message; }
+        return;
+      }
+      const flag = flagBtn.dataset.flag;
+      try {
+        await dbApi.setChatFlags(chat.id, { [flag]: !mine[flag] });
+        flagBtn.classList.toggle('on');
+        renderChatListBadge();
+        toast(flag === 'pinned' ? (!mine.pinned ? 'Закреплён 📌' : 'Откреплён')
+          : flag === 'muted' ? (!mine.muted ? 'Без звука 🔕' : 'Звук включён 🔊')
+          : (!mine.archived ? 'В архиве 🗄' : 'Возвращён из архива'));
+      } catch (err) { qs('#ci-error', m).textContent = err.message; }
+      return;
+    }
     const up = e.target.closest('.kick-up');
     if (up) {
       try {

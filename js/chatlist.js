@@ -23,11 +23,14 @@ export function initChatListUI() {
         console.warn(e);
       }
     } else {
-      searchMode = false;
+      searchMode = true; // пустой запрос = показать недавние
       searchResults = [];
     }
     renderChatList();
   }, 250));
+  searchInput.addEventListener('focus', () => {
+    if (!searchInput.value.trim()) { searchMode = true; searchResults = []; renderChatList(); }
+  });
 
   qs('#profile-btn').addEventListener('click', openSettingsModal);
   qs('#settings-btn').addEventListener('click', openSettingsModal);
@@ -49,12 +52,35 @@ export function renderChatList() {
   const results = qs('#search-results');
   const q = qs('#search-input').value.trim();
 
-  if (searchMode) {
+    if (searchMode) {
     list.classList.add('hidden');
     results.classList.remove('hidden');
     const matchedChats = [...state.chats.values()].filter((c) =>
       chatTitleFor(c).toLowerCase().includes(q.toLowerCase()));
     results.innerHTML = '';
+    if (!q) {
+      // история поиска
+      const hist = getSearchHistory();
+      if (hist.length) {
+        results.appendChild(el('<div class="search-section">Недавние запросы</div>'));
+        const box = el('<div class="hist-box"></div>');
+        hist.forEach((h) => {
+          const chip = el(`<button class="chip hist-chip">🕘 ${esc(h)}</button>`);
+          chip.addEventListener('click', () => {
+            qs('#search-input').value = h;
+            qs('#search-input').dispatchEvent(new Event('input'));
+          });
+          box.appendChild(chip);
+        });
+        results.appendChild(box);
+        const clear = el('<button class="pm-link hist-clear">Очистить историю</button>');
+        clear.addEventListener('click', () => { localStorage.removeItem('msp_search_hist'); renderChatList(); });
+        results.appendChild(clear);
+      } else {
+        results.appendChild(el('<div class="list-empty">Начни печатать имя или @ник —<br>здесь появится история поиска.</div>'));
+      }
+      return;
+    }
     if (matchedChats.length) {
       results.appendChild(el('<div class="search-section">Чаты и серверы</div>'));
       matchedChats.forEach((c) => results.appendChild(chatRowEl(c, true)));
@@ -77,10 +103,18 @@ export function renderChatList() {
   list.classList.remove('hidden');
   list.innerHTML = '';
 
+  const myFlags = (c) => {
+    const mine = (c.members || []).find((x) => x.user_id === state.me.id);
+    return { pinned: !!mine?.pinned, archived: !!mine?.archived, muted: !!mine?.muted };
+  };
   const all = [...state.chats.values()]
     .sort((a, b) => new Date(b.last_message_at) - new Date(a.last_message_at));
-  const servers = all.filter((c) => c.type === 'group');
-  const personal = all.filter((c) => c.type !== 'group');
+  const active = all.filter((c) => !myFlags(c).archived);
+  const archived = all.filter((c) => myFlags(c).archived);
+  const pinnedSet = new Set(active.filter((c) => myFlags(c).pinned).map((c) => c.id));
+  const servers = active.filter((c) => c.type === 'group' && !pinnedSet.has(c.id));
+  const personal = active.filter((c) => c.type !== 'group' && !pinnedSet.has(c.id));
+  const pinnedChats = active.filter((c) => pinnedSet.has(c.id));
 
   if (!all.length) {
     list.appendChild(el(`<div class="list-empty">
@@ -92,6 +126,10 @@ export function renderChatList() {
     return;
   }
 
+  if (pinnedChats.length) {
+    list.appendChild(el('<div class="search-section">📌 Закреплённые</div>'));
+    pinnedChats.forEach((c) => list.appendChild(chatRowEl(c, false)));
+  }
   if (personal.length) {
     list.appendChild(el('<div class="search-section">Личное</div>'));
     personal.forEach((c) => list.appendChild(chatRowEl(c, false)));
@@ -99,6 +137,18 @@ export function renderChatList() {
   if (servers.length) {
     list.appendChild(el('<div class="search-section">Серверы</div>'));
     servers.forEach((c) => list.appendChild(chatRowEl(c, false)));
+  }
+  if (archived.length) {
+    const head = el(`<div class="search-section archive-toggle">🗄 Архив (${archived.length}) <span class="arc-caret">▸</span></div>`);
+    let archiveBox = null;
+    head.addEventListener('click', () => {
+      if (archiveBox) { archiveBox.remove(); archiveBox = null; head.querySelector('.arc-caret').textContent = '▸'; return; }
+      archiveBox = el('<div></div>');
+      archived.forEach((c) => archiveBox.appendChild(chatRowEl(c, false)));
+      head.after(archiveBox);
+      head.querySelector('.arc-caret').textContent = '▾';
+    });
+    list.appendChild(head);
   }
   import('./chatlist.js').then((mm) => mm.renderServerRail());
 }
@@ -143,7 +193,8 @@ function chatRowEl(chat, inSearch) {
         </div>
         <div class="chat-row-bottom">
           <span class="chat-row-preview">${esc(preview)}</span>
-          ${unread ? `<span class="unread-badge">${unread > 99 ? '99+' : unread}</span>` : ''}
+          ${unread ? `<span class="unread-badge${myFlags(chat).muted ? ' muted' : ''}">${unread > 99 ? '99+' : unread}</span>` : ''}
+          ${myFlags(chat).muted ? '<span class="row-muted" title="Без звука">🔕</span>' : ''}
         </div>
         ${metaLine}
       </div>
@@ -174,10 +225,25 @@ function personRowEl(p) {
     </div>`);
   row.addEventListener('click', () => {
     // клик по человеку — открываем его профиль (кнопка «Написать» внутри)
+    const q = qs('#search-input').value.trim();
+    if (q) pushSearchHistory(q);
     searchMode = false;
     openProfile(p.id);
   });
   return row;
+}
+
+// ---------- история поиска ----------
+function getSearchHistory() {
+  try { return JSON.parse(localStorage.getItem('msp_search_hist') || '[]').slice(0, 8); }
+  catch { return []; }
+}
+function pushSearchHistory(q) {
+  try {
+    const h = getSearchHistory().filter((x) => x !== q);
+    h.unshift(q);
+    localStorage.setItem('msp_search_hist', JSON.stringify(h.slice(0, 8)));
+  } catch { /* */ }
 }
 
 // ---------- модалка: новый сервер ----------
@@ -196,6 +262,9 @@ export function openServerModal() {
         </label>
         <div id="gr-selected" class="chips"></div>
         <div id="gr-results" class="gr-results"></div>
+        <div class="settings-sec">🌐 Сообщества</div>
+        <button class="btn ghost sm" id="gr-show-public">Показать публичные серверы</button>
+        <div id="gr-discover" class="gr-results"></div>
         <div class="form-error" id="gr-error"></div>
         <div class="modal-actions">
           <button class="btn ghost" data-act="close">Отмена</button>
@@ -248,6 +317,46 @@ export function openServerModal() {
     }
   }, 250);
   qs('#gr-search', m).addEventListener('input', doSearch);
+
+  // ---------- сообщества (публичные серверы) ----------
+  qs('#gr-show-public', m).addEventListener('click', async (e) => {
+    const box = qs('#gr-discover', m);
+    e.target.disabled = true;
+    box.innerHTML = '<div class="list-empty">Загрузка…</div>';
+    try {
+      const pubs = await dbApi.listPublicChats();
+      if (!pubs.length) { box.innerHTML = '<div class="list-empty">Пока нет публичных серверов.<br>Сделай свой: галочка «🌐 Публичный» в настройках сервера.</div>'; return; }
+      box.innerHTML = '';
+      pubs.forEach((s) => {
+        const mineAlready = state.chats.has(s.id);
+        const row = el(`
+          <div class="person-row sm">
+            ${s.avatar_url
+    ? `<span class="avatar sm"><img src="${esc(s.avatar_url)}" alt=""></span>`
+    : `<span class="avatar sm server-av" style="background:${serverColor(s.id)}">${esc((s.title || 'S')[0].toUpperCase())}</span>`}
+            <div class="chat-row-main">
+              <span class="chat-row-title">${esc(s.title || 'Без названия')}</span>
+              <span class="chat-row-preview">${s.members} участник${s.members === 1 ? '' : s.members % 10 >= 2 && s.members % 10 <= 4 && (s.members % 100 < 12 || s.members % 100 > 14) ? 'я' : 'ей'}</span>
+            </div>
+            <button class="btn primary sm" ${mineAlready ? 'disabled' : ''}>${mineAlready ? '✓ Есть' : 'Вступить'}</button>
+          </div>`);
+        row.querySelector('button').addEventListener('click', async (ev) => {
+          ev.stopPropagation();
+          try {
+            const chatId = await dbApi.joinPublic(s.id);
+            toast(`Ты в «${s.title}» 🎉`);
+            m.remove();
+            bus.emit('open-chat', chatId);
+          } catch (err) { toast('Не вышло: ' + err.message); }
+        });
+        box.appendChild(row);
+      });
+    } catch (err) {
+      box.innerHTML = `<div class="list-empty">${esc(err.message)}</div>`;
+    } finally {
+      e.target.disabled = false;
+    }
+  });
 
   qs('#gr-create', m).addEventListener('click', async () => {
     const title = qs('#gr-title', m).value.trim();

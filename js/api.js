@@ -207,6 +207,139 @@ export const dbApi = {
     return data || [];
   },
 
+  async adminReports() {
+    const { data, error } = await _sb.from('reports')
+      .select('*, reporter:profiles!reports_reporter_fkey(*), target:profiles!reports_target_profile_fkey(*)')
+      .order('created_at', { ascending: false });
+    if (error) {
+      // второй вариант имён связей (фолбэк)
+      const r2 = await _sb.from('reports').select('*').order('created_at', { ascending: false });
+      if (r2.error) handleErr(r2.error, 'Не удалось получить жалобы');
+      const profs = await this.adminListUsers();
+      const byId = new Map(profs.map((p) => [p.id, p]));
+      for (const r of r2.data || []) {
+        r.reporter = byId.get(r.reporter) || null;
+        r.target = byId.get(r.target_profile) || null;
+      }
+      return r2.data || [];
+    }
+    return data || [];
+  },
+
+  async adminSetReportStatus(id, status) {
+    const { error } = await _sb.from('reports').update({ status }).eq('id', id);
+    if (error) handleErr(error, 'Не удалось обновить жалобу');
+    return true;
+  },
+
+  async adminStats() {
+    const cnt = async (table) => {
+      const { count, error } = await _sb.from(table).select('*', { count: 'exact', head: true });
+      return error ? null : count;
+    };
+    const [users, chats, messages, channels, reports, blocks] = await Promise.all([
+      cnt('profiles'), cnt('chats'), cnt('messages'), cnt('channels'), cnt('reports'), cnt('blocks'),
+    ]);
+    const since = new Date(Date.now() - 6 * 86400000).toISOString();
+    const { data: week, error: weekErr } = await _sb.from('messages')
+      .select('created_at').gte('created_at', since);
+    const days = new Array(7).fill(0);
+    if (!weekErr) for (const r of week || []) {
+      const d = new Date(r.created_at);
+      const idx = 6 - Math.floor((Date.now() - d.getTime()) / 86400000);
+      if (idx >= 0 && idx < 7) days[idx] += 1;
+    }
+    return { users, chats, messages, channels, reports, blocks, days };
+  },
+
+  // ---------- блокировки ----------
+  async myBlocks() {
+    const { data, error } = await _sb.from('blocks').select('blocked');
+    if (error) return new Set();
+    return new Set((data || []).map((r) => r.blocked));
+  },
+
+  async blockedMe() {
+    const { data, error } = await _sb.from('blocks').select('blocker').eq('blocked', state.me.id);
+    if (error) return new Set();
+    return new Set((data || []).map((r) => r.blocker));
+  },
+
+  async setBlock(userId, blocked) {
+    if (blocked) {
+      const { error } = await _sb.from('blocks').insert({ blocker: state.me.id, blocked: userId });
+      if (error) handleErr(error, 'Не удалось заблокировать');
+    } else {
+      const { error } = await _sb.from('blocks')
+        .delete().eq('blocker', state.me.id).eq('blocked', userId);
+      if (error) handleErr(error, 'Не удалось разблокировать');
+    }
+    return true;
+  },
+
+  // ---------- жалобы ----------
+  async createReport(targetProfile, reason, messageId = null) {
+    const { error } = await _sb.from('reports').insert({
+      reporter: state.me.id, target_profile: targetProfile, reason, target_message: messageId,
+    });
+    if (error) handleErr(error, 'Не удалось отправить жалобу');
+    return true;
+  },
+
+  // ---------- флаги чатов (закреп/мьют/архив) ----------
+  async setChatFlags(chatId, patch) {
+    const { error } = await _sb.from('chat_members')
+      .update(patch).eq('chat_id', chatId).eq('user_id', state.me.id);
+    if (error) handleErr(error, 'Не удалось сохранить');
+    const chat = state.chats.get(chatId);
+    if (chat && chat.members) {
+      const mine = chat.members.find((x) => x.user_id === state.me.id);
+      if (mine) Object.assign(mine, patch);
+    }
+    return true;
+  },
+
+  // ---------- публичные сообщества ----------
+  async listPublicChats() {
+    const { data, error } = await _sb.from('chats')
+      .select('id, title, avatar_url, last_message_at, chat_members(count)')
+      .eq('is_public', true).eq('type', 'group')
+      .order('last_message_at', { ascending: false }).limit(30);
+    if (error) handleErr(error, 'Не удалось загрузить сообщества');
+    return (data || []).map((c) => ({
+      id: c.id, title: c.title, avatar_url: c.avatar_url,
+      members: (c.chat_members && c.chat_members[0] && c.chat_members[0].count) || 0,
+    }));
+  },
+
+  async joinPublic(chatId) {
+    const { error } = await _sb.from('chat_members')
+      .insert({ chat_id: chatId, user_id: state.me.id, role: 'member' });
+    if (error && !/duplicate|unique/i.test(error.message || '')) handleErr(error, 'Не удалось вступить');
+    await this.loadChatRow(chatId);
+    return chatId;
+  },
+
+  async setServerPublic(chatId, isPublic) {
+    const { error } = await _sb.from('chats').update({ is_public: isPublic }).eq('id', chatId);
+    if (error) handleErr(error, 'Не удалось изменить приватность');
+    const chat = state.chats.get(chatId);
+    if (chat) chat.is_public = isPublic;
+    return true;
+  },
+
+  // ---------- профиль: обложка ----------
+  async uploadCover(file) {
+    const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+    const path = `${state.me.id}/cover-${Date.now()}.${ext}`;
+    const { error } = await _sb.storage.from('avatars').upload(path, file, { upsert: true });
+    if (error) handleErr(error, 'Не удалось загрузить обложку');
+    const { data } = _sb.storage.from('avatars').getPublicUrl(path);
+    const url = data.publicUrl;
+    await this.updateMe({ cover_url: url });
+    return url;
+  },
+
   async checkNickname(nick) {
     const { data, error } = await _sb.from('profiles')
       .select('id').ilike('nickname', nick).maybeSingle();
@@ -302,6 +435,23 @@ export const dbApi = {
   },
 
   async startDirect(userId) {
+    // 0) блокировки: не создаём чат, если кто-то из двоих заблокирован
+    try {
+      const { data: blk } = await _sb.from('blocks')
+        .select('blocker, blocked')
+        .or(`and(blocker.eq.${state.me.id},blocked.eq.${userId}),and(blocker.eq.${userId},blocked.eq.${state.me.id})`)
+        .limit(1);
+      if (blk && blk.length) {
+        const iBlocked = blk[0].blocker === state.me.id;
+        throw new Error(iBlocked
+          ? 'Ты заблокировал(а) этого пользователя. Сначала разблокируй в его профиле.'
+          : 'Пользователь заблокировал тебя 😔');
+      }
+    } catch (e) {
+      if (/заблокирова/.test(e.message)) throw e;
+      /* таблица blocks недоступна — пропускаем проверку */
+    }
+
     // 1) штатный путь — security definer функция
     try {
       const { data, error } = await _sb.rpc('get_or_create_direct_chat', { other_user: userId });

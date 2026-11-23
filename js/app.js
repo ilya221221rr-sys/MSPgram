@@ -227,6 +227,13 @@ async function doEnter(session) {
       toast('Не удалось вступить: ' + e.message, 5000);
     }
   }
+
+  // профиль по ссылке/QR (?add=<id>)
+  const addId = new URLSearchParams(location.search).get('add');
+  if (addId) {
+    history.replaceState(null, '', location.pathname + location.search.replace(/([&?])add=[^&]*/, ''));
+    import('./profile.js').then((mod) => mod.openProfile(addId)).catch(() => {});
+  }
 }
 
 // ================== ЭКРАН БАНА ==================
@@ -388,8 +395,12 @@ async function onDbMessage(m) {
       dbApi.markRead(m.chat_id);
     } else {
       state.unread.set(m.chat_id, (state.unread.get(m.chat_id) || 0) + 1);
-      beep();
-      showNotification(chat, m);
+      // чат без звука — только счётчик, без сигнала и всплывашки
+      const mine = (chat.members || []).find((x) => x.user_id === state.me.id);
+      if (!mine?.muted) {
+        beep();
+        showNotification(chat, m);
+      }
     }
   }
   renderChatList();

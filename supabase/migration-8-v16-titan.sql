@@ -1,0 +1,10 @@
+-- ============================================================
+-- Миграция 8: v16 Titan (2026-11-23, применена через коннектор)
+-- A. Избранное: уникальный индекс + нормализация self-чатов
+-- B. profiles: cover_url, status_text
+-- C. chat_members: muted, pinned, archived
+-- D. blocks + direct_not_blocked() в messages insert
+-- E. reports (жалобы) + RLS admin
+-- F. chats.is_public + политики публичных сообществ
+-- Полный текст: supabase/schema.sql (синхронизирован)
+-- ============================================================

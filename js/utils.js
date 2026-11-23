@@ -54,7 +54,7 @@ export function avatarHTML(url, name, cls = '', online = false) {
   return `<span class="avatar ${cls}" style="background:${avatarColor(name)}">${esc(initials(name))}${dot}</span>`;
 }
 
-const MONTHS_RU = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
+export const MONTHS_RU = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
   'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
 
 export function fmtTime(iso) {
