@@ -5,9 +5,10 @@
 #   • токен очищается от пробелов/переводов строки и проверяется запросом к API Supabase
 #   • ошибки supabase CLI больше не прячутся (убран 2>/dev/null)
 #   • в логе красным пишется ПОНЯТНАЯ причина падения
+#   • FIX: `supabase secrets set` теперь с --yes (в CI нет терминала для подтверждения)
+#   • FIX: --project-ref заменён на --remote в командах secrets
 # ============================================================
 name: Включить push на сервере
-
 on:
   workflow_dispatch:
     inputs:
@@ -15,16 +16,13 @@ on:
         description: 'Пересоздать VAPID-ключи (подписки всех устройств придётся создать заново)'
         type: boolean
         default: false
-
 env:
   PROJECT_REF: xqjtycvfjamnqtkznyio
-
 jobs:
   setup:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: Проверка токена Supabase
         env:
           RAW_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
@@ -53,15 +51,12 @@ jobs:
           fi
           echo "SUPABASE_ACCESS_TOKEN=$TOKEN" >> "$GITHUB_ENV"
           echo "✅ Токен рабочий, проект найден"
-
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-
       - uses: supabase/setup-cli@v1
         with:
           version: latest
-
       - name: Секреты функции (VAPID + вебхук)
         env:
           REGENERATE: ${{ inputs.regenerate_vapid }}
@@ -69,34 +64,29 @@ jobs:
         run: |
           set -euo pipefail
           supabase --version
-
-          EXISTING="$(supabase secrets list --project-ref "$PROJECT_REF" -o json || echo '[]')"
+          EXISTING="$(supabase secrets list --remote "$PROJECT_REF" -o json || echo '[]')"
           HAS_VAPID="$(echo "$EXISTING" | jq '[.[].name] | (index("VAPID_PUBLIC_KEY") != null) and (index("VAPID_PRIVATE_KEY") != null)' || echo false)"
           echo "VAPID-ключи уже есть: $HAS_VAPID"
-
           WH="$(openssl rand -hex 32)"
           echo "::add-mask::$WH"
           echo "WEBHOOK_SECRET=$WH" >> "$GITHUB_ENV"
-
           if [ "$HAS_VAPID" != "true" ] || [ "$REGENERATE" = "true" ]; then
             echo "Создаю новые VAPID-ключи"
             KEYS="$(npx --yes web-push@3.6.7 generate-vapid-keys --json)"
             PUB="$(echo "$KEYS" | jq -r .publicKey)"
             PRIV="$(echo "$KEYS" | jq -r .privateKey)"
             echo "::add-mask::$PRIV"
-            supabase secrets set --project-ref "$PROJECT_REF" \
+            supabase secrets set --remote "$PROJECT_REF" --yes \
               VAPID_PUBLIC_KEY="$PUB" VAPID_PRIVATE_KEY="$PRIV" \
               VAPID_SUBJECT="$SITE_URL" \
               PUSH_WEBHOOK_SECRET="$WH"
           else
             echo "VAPID-ключи уже есть — оставляю как есть"
-            supabase secrets set --project-ref "$PROJECT_REF" PUSH_WEBHOOK_SECRET="$WH"
+            supabase secrets set --remote "$PROJECT_REF" --yes PUSH_WEBHOOK_SECRET="$WH"
           fi
-
       - name: Деплой функции send-push
         run: |
           supabase functions deploy send-push --project-ref "$PROJECT_REF" --no-verify-jwt --use-api
-
       - name: SQL — миграции и настройки
         run: |
           set -euo pipefail
@@ -117,7 +107,6 @@ jobs:
           printf "insert into public.push_settings (key, value) values ('function_url', 'https://%s.supabase.co/functions/v1/send-push'), ('webhook_secret', '%s') on conflict (key) do update set value = excluded.value;" \
             "$PROJECT_REF" "$WEBHOOK_SECRET" > /tmp/settings.sql
           run_sql /tmp/settings.sql
-
       - name: Проверка функции
         run: |
           for i in 1 2 3 4 5 6 7 8; do
