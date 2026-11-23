@@ -98,6 +98,22 @@ export function relLastSeen(lastSeen, online) {
   return 'был(а) давно';
 }
 
+// компактный вариант для списка чатов
+export function lastSeenShort(lastSeen, online) {
+  if (online) return 'онлайн';
+  if (!lastSeen) return 'был(а) давно';
+  const diff = Date.now() - new Date(lastSeen).getTime();
+  const min = Math.floor(diff / 60000);
+  if (min < 1) return 'только что';
+  if (min < 60) return `${min} мин назад`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `${h} ч назад`;
+  const d = Math.floor(h / 24);
+  if (d === 1) return 'вчера';
+  if (d < 30) return `${d} дн назад`;
+  return 'давно';
+}
+
 // Короткое время для списка чатов
 export function fmtListTime(iso) {
   if (!iso) return '';

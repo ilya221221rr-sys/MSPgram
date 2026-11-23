@@ -2,7 +2,7 @@
 import { state, dbApi, otherMember, chatTitleFor, isSavedChat } from './api.js';
 import {
   qs, esc, el, bus, toast, avatarHTML, fmtListTime,
-  relLastSeen, debounce,
+  relLastSeen, lastSeenShort, debounce,
 } from './utils.js';
 import { openSettingsModal } from './settings.js';
 
@@ -121,6 +121,14 @@ function chatRowEl(chat, inSearch) {
       ? `<span class="avatar md server-av" style="background:${serverColor(chat.id)}">${esc((chat.title || 'S')[0].toUpperCase())}</span>`
       : avatarHTML(chat.type === 'group' ? chat.avatar_url : other?.avatar_url, title, 'md', false);
 
+  // строка «кто это и когда был(а) в сети» — для личных чатов
+  const metaLine = (!saved && !isServer && other)
+    ? `<div class="chat-row-meta">
+         <span class="crm-nick">@${esc(other.nickname)}</span>
+         <span class="crm-status ${isOnline ? 'on' : ''}">${isOnline ? 'онлайн' : esc(lastSeenShort(other.last_seen, false))}</span>
+       </div>`
+    : '';
+
   const row = el(`
     <div class="chat-row${active}${isServer ? ' server-row' : ''}" data-chat="${chat.id}">
       ${av}
@@ -133,6 +141,7 @@ function chatRowEl(chat, inSearch) {
           <span class="chat-row-preview">${esc(preview)}</span>
           ${unread ? `<span class="unread-badge">${unread > 99 ? '99+' : unread}</span>` : ''}
         </div>
+        ${metaLine}
       </div>
       ${isOnline ? '<span class="row-online" title="онлайн"></span>' : ''}
     </div>`);

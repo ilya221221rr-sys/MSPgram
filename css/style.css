@@ -1132,3 +1132,27 @@ input::placeholder, textarea::placeholder { color: #5c688a; }
 .messages { padding: 14px 18px 8px; }
 .msg-row { max-width: min(64%, 520px); }
 @media (max-width: 900px) { .msg-row { max-width: 86%; } }
+
+/* ============================================================
+   3.1: круглые аватары (как в Telegram), мета-строка чатов
+   ============================================================ */
+.avatar.md, .avatar.sm, .avatar.xs, .avatar.xl { border-radius: 50%; }
+.avatar.md { border-radius: 50%; }
+/* серверные аватарки остаются «квадратными» — это фишка Discord-части */
+.server-av, .rail-btn { border-radius: 14px !important; }
+.rail-btn.active { border-radius: 12px !important; }
+
+/* мета-строка: @ник и «когда был(а) в сети» */
+.chat-row-meta {
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 8px; margin-top: 2px; font-size: 11px;
+}
+.crm-nick { color: var(--accent); opacity: .85; }
+.crm-status { color: var(--muted); flex: none; }
+.crm-status.on { color: var(--ok); font-weight: 600; }
+.chat-row-main:has(.chat-row-meta) .chat-row-preview {
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* звонки: аватар-кружок чуть больше и мягче */
+.call-avatar-wrap .avatar { border-radius: 50% !important; }

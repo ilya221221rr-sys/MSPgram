@@ -121,8 +121,12 @@ function renderHeader() {
   let sub;
   if (isTyping) sub = isTyping;
   else if (saved) sub = 'только для тебя';
-  else if (chat.type === 'direct') sub = relLastSeen(other?.last_seen, online);
-  else sub = `${(chat.members || []).length} участник${plural((chat.members || []).length)}`;
+  else if (chat.type === 'direct') {
+    const nick = other ? `@${other.nickname}` : '';
+    sub = nick ? `${nick} · ${relLastSeen(other?.last_seen, online)}` : relLastSeen(other?.last_seen, online);
+  } else {
+    sub = `${(chat.members || []).length} участник${plural((chat.members || []).length)}`;
+  }
 
   const headAv = saved
     ? '<span class="avatar md saved-av">🔖</span>'

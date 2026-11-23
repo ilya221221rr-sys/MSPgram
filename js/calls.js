@@ -5,8 +5,13 @@ import { el, qs, toast, avatarHTML, esc, fmtDuration } from './utils.js';
 
 const ICE = {
   iceServers: [
-    { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
+    { urls: ['stun:stun.l.google.com:19302', 'stun:stun.cloudflare.com:3478'] },
+    // Бесплатный TURN (обходит строгий NAT — без него многие соединения не проходят)
+    { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+    { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+    { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
   ],
+  iceCandidatePoolSize: 10,
 };
 
 // ---------- состояние модуля ----------
@@ -25,7 +30,10 @@ async function getMedia(video) {
   try {
     return await navigator.mediaDevices.getUserMedia({
       audio: true,
-      video: video ? { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } } : false,
+      // умеренное качество — меньше лагов на слабых устройствах и каналах
+      video: video
+        ? { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 360 }, frameRate: { ideal: 15, max: 24 } }
+        : false,
     });
   } catch {
     toast('Нет доступа к микрофону/камере. Разреши доступ в браузере.');
@@ -374,7 +382,14 @@ async function answerRing(p) {
     if (!call || payload.callId !== call.id) return;
     cleanupCall();
     toast('Звонок завершён');
-  }).subscribe();
+  }).subscribe((status) => {
+    // КЛЮЧЕВОЙ ФИКС: сообщаем инициатору, что приняли —
+    // без этого он не создаёт offer и звонок «не работает»
+    if (status === 'SUBSCRIBED' && call) {
+      sendOn(chan, 'call-accept', { callId: call.id }).catch(() => {});
+      callStatus('Соединение…');
+    }
+  });
 
   call.overlay = callOverlay({
     remote: { display_name: p.from }, incoming: true, video: p.video,
