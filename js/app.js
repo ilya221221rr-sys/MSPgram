@@ -190,6 +190,13 @@ async function doEnter(session) {
     return;
   }
   renderSidebarMe();
+
+  // забаненный пользователь не входит в приложение
+  if (state.me.is_banned && (!state.me.banned_until || new Date(state.me.banned_until) > new Date())) {
+    showBanScreen(state.me);
+    return;
+  }
+
   ensureCallsReady(); // входящие звонки: профиль готов — подписываемся
 
   // чаты + непрочитанные
@@ -220,6 +227,27 @@ async function doEnter(session) {
       toast('Не удалось вступить: ' + e.message, 5000);
     }
   }
+}
+
+// ================== ЭКРАН БАНА ==================
+
+function showBanScreen(me) {
+  const until = me.banned_until
+    ? `до ${new Date(me.banned_until).toLocaleString('ru')}`
+    : 'навсегда';
+  const o = el(`
+    <div class="ban-overlay">
+      <div class="ban-card">
+        <div class="ban-emoji">🚫</div>
+        <h2>Аккаунт заблокирован</h2>
+        <p class="ban-reason">${esc(me.ban_reason || 'Причина не указана')}</p>
+        <p class="ban-until">Срок: ${esc(until)}</p>
+        <p class="ban-hint">Если считаешь это ошибкой — напиши администрации в другом мессенджере.</p>
+        <button class="btn danger" id="ban-logout">Выйти</button>
+      </div>
+    </div>`);
+  document.body.appendChild(o);
+  o.querySelector('#ban-logout').addEventListener('click', () => authApi.signOut());
 }
 
 async function leaveApp() {

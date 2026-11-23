@@ -1,5 +1,6 @@
 // Настройки: профиль, уведомления, внешний вид (как в Telegram — свой раздел)
 import { state, dbApi, storeApi, authApi } from './api.js';
+import { openAdminPanel } from './admin.js';
 import {
   qs, esc, el, toast, avatarHTML, getPrefs, setPrefs, confirmDialog,
 } from './utils.js';
@@ -89,6 +90,14 @@ export function openSettingsModal() {
         </div>
 
         <div class="settings-sec">Аккаунт</div>
+        ${me.is_admin ? `
+        <div class="settings-row">
+          <div>
+            <div class="settings-row-title">🛡 Админ-панель</div>
+            <div class="settings-row-sub">Пользователи, баны, переписка</div>
+          </div>
+          <button class="btn primary sm" id="st-admin">Открыть</button>
+        </div>` : ''}
         <div class="settings-row">
           <div>
             <div class="settings-row-title" id="st-email">${esc(email || 'Email скрыт')}</div>
@@ -243,6 +252,11 @@ export function openSettingsModal() {
   });
 
   // ---------- аккаунт ----------
+  const adminBtn = qs('#st-admin', m);
+  if (adminBtn) adminBtn.addEventListener('click', async () => {
+    m.remove();
+    await openAdminPanel();
+  });
   qs('#st-logout', m).addEventListener('click', async () => {
     close();
     const ok = await confirmDialog({ title: 'Выйти из аккаунта?', text: '', okLabel: 'Выйти', danger: false });

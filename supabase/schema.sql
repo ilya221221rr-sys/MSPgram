@@ -480,3 +480,25 @@ set channel_id = ch.id
 from public.channels ch
 join public.chats c on c.id = ch.chat_id
 where m.chat_id = c.id and m.channel_id is null and ch.name = 'общий';
+
+
+-- ============================================================
+-- Миграция 7 (2026-11-23): админ-панель и баны
+-- ============================================================
+alter table public.profiles add column if not exists is_admin boolean not null default false;
+alter table public.profiles add column if not exists is_banned boolean not null default false;
+alter table public.profiles add column if not exists banned_until timestamptz;
+alter table public.profiles add column if not exists ban_reason text;
+
+create or replace function public.is_admin()
+returns boolean language sql stable security definer set search_path = 'public'
+as $$ select coalesce((select p.is_admin from public.profiles p where p.id = auth.uid()), false); $$;
+
+create or replace function public.is_banned_user()
+returns boolean language sql stable security definer set search_path = 'public'
+as $$ select exists (select 1 from public.profiles p where p.id = auth.uid() and p.is_banned and (p.banned_until is null or p.banned_until > now())); $$;
+
+create policy "messages admin read" on public.messages for select to authenticated using (public.is_admin());
+create policy "messages admin delete" on public.messages for delete to authenticated using (public.is_admin());
+create policy "chats admin read" on public.chats for select to authenticated using (public.is_admin());
+create policy "members admin read" on public.chat_members for select to authenticated using (public.is_admin());

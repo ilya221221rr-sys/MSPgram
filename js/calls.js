@@ -123,7 +123,7 @@ export async function startCall(chat, withVideo) {
   };
 
   chan.on('broadcast', { event: 'call-accept' }, async ({ payload }) => {
-    if (!call || payload.callId !== call.id) return;
+    if (!call || payload.callId !== call.id || call.pc) return; // call.pc: защита от двойного accept
     callStatus('Соединение…');
     await makePeer(call, true);
   }).on('broadcast', { event: 'call-reject' }, ({ payload }) => {
@@ -134,7 +134,10 @@ export async function startCall(chat, withVideo) {
     // я инициатор — оффер мне не нужен
   }).on('broadcast', { event: 'call-answer' }, async ({ payload }) => {
     if (!call || payload.callId !== call.id || !call.pc) return;
-    try { await call.pc.setRemoteDescription({ type: 'answer', sdp: payload.sdp }); } catch (e) { console.warn(e); }
+    try {
+      await call.pc.setRemoteDescription({ type: 'answer', sdp: payload.sdp });
+      for (const cd of payload.candidates || []) { try { await call.pc.addIceCandidate(cd); } catch { /* дубликат */ } }
+    } catch (e) { console.warn(e); }
   }).on('broadcast', { event: 'call-ice' }, async ({ payload }) => {
     if (!call || !call.pc || payload.callId !== call.id) return;
     try { await call.pc.addIceCandidate(payload.candidate); } catch { /* лед поздний */ }
@@ -201,6 +204,7 @@ export function hangup(c = call) {
 async function makePeer(c, isCaller) {
   const pc = new RTCPeerConnection(ICE);
   c.pc = pc;
+  const cand = []; // кандидаты для бандла в offer/answer
   localStream.getTracks().forEach((t) => pc.addTrack(t, localStream));
 
   const rv = qs('#call-remote-video');
@@ -230,7 +234,10 @@ async function makePeer(c, isCaller) {
     void stream;
   };
   pc.onicecandidate = (e) => {
-    if (e.candidate) sendCallEvent('call-ice', { callId: c.id, candidate: e.candidate.toJSON() });
+    if (e.candidate) {
+      cand.push(e.candidate.toJSON());
+      sendCallEvent('call-ice', { callId: c.id, candidate: e.candidate.toJSON() });
+    }
   };
   pc.onconnectionstatechange = () => {
     const st = pc.connectionState;
@@ -249,7 +256,8 @@ async function makePeer(c, isCaller) {
   if (isCaller) {
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
-    sendCallEvent('call-offer', { callId: c.id, sdp: pc.localDescription.sdp });
+    await waitIce(pc); // ждём кандидаты — оффер уходит сразу «полным»
+    sendCallEvent('call-offer', { callId: c.id, sdp: pc.localDescription.sdp, candidates: cand });
   } else {
     // оффер придёт событием
   }
@@ -362,9 +370,10 @@ async function answerRing(p) {
   };
 
   chan.on('broadcast', { event: 'call-offer' }, async ({ payload }) => {
-    if (!call || payload.callId !== call.id) return;
+    if (!call || payload.callId !== call.id || call.pc) return; // защита от повторного offer
     const pc = new RTCPeerConnection(ICE);
     call.pc = pc;
+    const cand = []; // кандидаты, собранные до отправки answer
     localStream.getTracks().forEach((t) => pc.addTrack(t, localStream));
     pc.ontrack = (e) => {
       const [stream] = e.streams;
@@ -385,15 +394,20 @@ async function answerRing(p) {
       startTimer();
     };
     pc.onicecandidate = (e) => {
-      if (e.candidate) sendCallEvent('call-ice', { callId: call.id, candidate: e.candidate.toJSON() });
+      if (e.candidate) {
+        cand.push(e.candidate.toJSON());
+        sendCallEvent('call-ice', { callId: call.id, candidate: e.candidate.toJSON() });
+      }
     };
     pc.onconnectionstatechange = () => {
       if (['failed', 'disconnected'].includes(pc.connectionState) && call) cleanupCall();
     };
     await pc.setRemoteDescription({ type: 'offer', sdp: payload.sdp });
+    for (const cd of payload.candidates || []) { try { await pc.addIceCandidate(cd); } catch { /* дубликат */ } }
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
-    sendCallEvent('call-answer', { callId: call.id, sdp: pc.localDescription.sdp });
+    await waitIce(pc);
+    sendCallEvent('call-answer', { callId: call.id, sdp: pc.localDescription.sdp, candidates: cand });
     if (call.video) {
       const lv = qs('#call-local-video');
       if (lv) lv.srcObject = localStream;
@@ -431,6 +445,17 @@ function sendCallEvent(event, payload) {
 
 function sendOn(chan, event, payload) {
   return chan.send({ type: 'broadcast', event, payload });
+}
+
+// ждём завершения сбора ICE-кандидатов (максимум ms мс)
+function waitIce(pc, ms = 1500) {
+  return new Promise((resolve) => {
+    if (pc.iceGatheringState === 'complete') return resolve();
+    const timer = setTimeout(resolve, ms);
+    pc.addEventListener('icegatheringstatechange', () => {
+      if (pc.iceGatheringState === 'complete') { clearTimeout(timer); resolve(); }
+    });
+  });
 }
 
 function sendWhenJoined(chan, event, payload) {
