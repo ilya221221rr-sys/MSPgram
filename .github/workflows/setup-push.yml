@@ -6,7 +6,7 @@
 #   • ошибки supabase CLI больше не прячутся (убран 2>/dev/null)
 #   • в логе красным пишется ПОНЯТНАЯ причина падения
 #   • FIX: `supabase secrets set` теперь с --yes (в CI нет терминала для подтверждения)
-#   • FIX: --project-ref заменён на --remote в командах secrets
+#   • FIX: --project-ref заменён на --remote="REF" (именно со знаком =) в командах secrets
 # ============================================================
 name: Включить push на сервере
 on:
@@ -64,7 +64,7 @@ jobs:
         run: |
           set -euo pipefail
           supabase --version
-          EXISTING="$(supabase secrets list --remote "$PROJECT_REF" -o json || echo '[]')"
+          EXISTING="$(supabase secrets list --remote="$PROJECT_REF" -o json || echo '[]')"
           HAS_VAPID="$(echo "$EXISTING" | jq '[.[].name] | (index("VAPID_PUBLIC_KEY") != null) and (index("VAPID_PRIVATE_KEY") != null)' || echo false)"
           echo "VAPID-ключи уже есть: $HAS_VAPID"
           WH="$(openssl rand -hex 32)"
@@ -76,13 +76,13 @@ jobs:
             PUB="$(echo "$KEYS" | jq -r .publicKey)"
             PRIV="$(echo "$KEYS" | jq -r .privateKey)"
             echo "::add-mask::$PRIV"
-            supabase secrets set --remote "$PROJECT_REF" --yes \
+            supabase secrets set --remote="$PROJECT_REF" --yes \
               VAPID_PUBLIC_KEY="$PUB" VAPID_PRIVATE_KEY="$PRIV" \
               VAPID_SUBJECT="$SITE_URL" \
               PUSH_WEBHOOK_SECRET="$WH"
           else
             echo "VAPID-ключи уже есть — оставляю как есть"
-            supabase secrets set --remote "$PROJECT_REF" --yes PUSH_WEBHOOK_SECRET="$WH"
+            supabase secrets set --remote="$PROJECT_REF" --yes PUSH_WEBHOOK_SECRET="$WH"
           fi
       - name: Деплой функции send-push
         run: |
