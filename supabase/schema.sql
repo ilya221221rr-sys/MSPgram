@@ -254,7 +254,7 @@ create policy "profiles insert" on public.profiles for insert to authenticated w
 create policy "profiles update" on public.profiles for update to authenticated using (id = auth.uid()) with check (id = auth.uid());
 
 -- Чаты: видны только участникам; удалить может создатель или (для личных) любой участник
-create policy "chats read"   on public.chats for select to authenticated using (public.is_chat_member(id));
+create policy "chats read"   on public.chats for select to authenticated using (public.is_chat_member(id) or created_by = auth.uid());
 create policy "chats insert" on public.chats for insert to authenticated with check (created_by = auth.uid());
 create policy "chats update" on public.chats for update to authenticated using (public.is_chat_member(id) and (created_by = auth.uid() or type = 'direct'));
 create policy "chats delete" on public.chats for delete to authenticated using (created_by = auth.uid() or (type = 'direct' and public.is_chat_member(id)));
@@ -339,11 +339,11 @@ drop policy if exists "channels read" on public.channels;
 create policy "channels read" on public.channels for select to authenticated using (public.is_chat_member(chat_id));
 drop policy if exists "channels insert" on public.channels;
 create policy "channels insert" on public.channels for insert to authenticated with check (
-  exists (select 1 from public.chat_members m where m.chat_id = chat_id and m.user_id = auth.uid() and m.role in ('owner','admin'))
+  exists (select 1 from public.chat_members m where m.chat_id = channels.chat_id and m.user_id = auth.uid() and m.role in ('owner','admin'))
 );
 drop policy if exists "channels delete" on public.channels;
 create policy "channels delete" on public.channels for delete to authenticated using (
-  exists (select 1 from public.chat_members m where m.chat_id = chat_id and m.user_id = auth.uid() and m.role in ('owner','admin'))
+  exists (select 1 from public.chat_members m where m.chat_id = channels.chat_id and m.user_id = auth.uid() and m.role in ('owner','admin'))
 );
 
 -- 2. Сообщения: канал и «переслано от»; чат: закреплённое сообщение
