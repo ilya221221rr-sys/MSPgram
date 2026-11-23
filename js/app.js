@@ -4,7 +4,9 @@
 import {
   resolveConfig, saveConfig, initClient, state, dbApi, authApi, getSb, chatTitleFor, memberProfile,
 } from './api.js';
-import { qs, bus, toast, beep } from './utils.js';
+import { qs, bus, toast, beep, getPrefs } from './utils.js';
+import { v18Boot, v18Enter, v18Leave, onIncomingMessage, onIncomingReaction } from './v18.js';
+import { ensureMfa } from './extras.js';
 import { initAuth, showAuth, showApp, showSetup } from './auth.js';
 import { initChatListUI, renderChatList, renderSidebarMe } from './chatlist.js';
 import {
@@ -35,6 +37,7 @@ window.addEventListener('unhandledrejection', (e) => {
 async function boot() {
   // 0. Пользовательские настройки внешнего вида и звука
   applyPrefs();
+  try { v18Boot(); } catch (e) { console.error('v18Boot:', e); }
 
   // 1. Конфигурация Supabase
   const cfg = resolveConfig();
@@ -182,6 +185,8 @@ async function enterApp(session) {
 }
 
 async function doEnter(session) {
+  // двухфакторная защита: пока не введён код — приложение не показываем
+  if (!(await ensureMfa())) return;
   showApp();
   try {
     await dbApi.ensureMe(session.user.id);
@@ -208,9 +213,10 @@ async function doEnter(session) {
     toast('Ошибка загрузки чатов: ' + e.message);
   }
 
-  startPresence();
+  try { startPresence(); } catch (e) { console.warn('presence:', e); }
   startRealtime();
   requestNotificationsOnFirstClick();
+  v18Enter().catch((e) => console.warn('v18Enter:', e));
 
   // вступление по ссылке-приглашению после входа
   const joinCode = pendingJoin || localStorage.getItem('msp_join');
@@ -269,6 +275,7 @@ async function leaveApp() {
   renderChatList();
   stopPresence();
   stopRealtime();
+  v18Leave();
   showAuth();
 }
 
@@ -295,7 +302,7 @@ function startRealtime() {
         onMessageDeleted(p.old.id);
       }
     }))
-    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'reactions' }, rt((p) => onReactionChange(p, false)))
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'reactions' }, rt((p) => { onReactionChange(p, false); return onIncomingReaction(p.new); }))
     .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'reactions' }, rt((p) => onReactionChange(p, true)))
     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'chats' }, rt((p) => {
       if (p.new) {
@@ -387,6 +394,7 @@ async function onDbMessage(m) {
 
   bus.emit('message:new', m);
   onNewMessage(m); // окно чата
+  onIncomingMessage(chat, m); // доставлено, упоминания, плашка внутри приложения
 
   if (m.sender_id !== state.me.id) {
     const isActiveVisible = state.activeChatId === m.chat_id
@@ -411,7 +419,7 @@ async function onDbMemberUpdate(row) {
   const chat = state.chats.get(row.chat_id);
   if (chat && chat.members) {
     const mem = chat.members.find((x) => x.user_id === row.user_id);
-    if (mem) mem.last_read_at = row.last_read_at;
+    if (mem) { mem.last_read_at = row.last_read_at; mem.last_delivered_at = row.last_delivered_at; }
     bus.emit('members-updated', row.chat_id);
     onMembersUpdated();
   }
@@ -439,6 +447,7 @@ async function onDbNewChat(row) {
 // ================== УВЕДОМЛЕНИЯ ==================
 
 function showNotification(chat, m) {
+  if (getPrefs()._dnd) return; // статус «не беспокоить»
   if (!('Notification' in window) || Notification.permission !== 'granted') return;
   const sender = memberProfile(chat, m.sender_id);
   const senderName = sender ? (sender.display_name || `@${sender.nickname}`) : 'Новое сообщение';

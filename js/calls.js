@@ -495,15 +495,16 @@ window.addEventListener('beforeunload', () => {
 
 export function inVoice() { return !!voice; }
 
-export async function joinVoice(chat) {
+export async function joinVoice(chat, withVideo = false) {
   if (call) { toast('Нельзя: идёт звонок'); return; }
   if (voice) { leaveVoice(); return; }
-  const stream = await getMedia(false);
+  const stream = await getMedia(withVideo);
   if (!stream) return;
 
   const sb = getSb();
   const chan = sb.channel(`voice-${chat.id}`);
-  voice = { chan, chatId: chat.id, peers: new Map(), bar: null, stream };
+  voice = { chan, chatId: chat.id, peers: new Map(), bar: null, stream, video: withVideo, localTile: null };
+  if (withVideo) voice.localTile = makeTile('Ты', stream, true, true);
 
   chan.on('broadcast', { event: 'voice-hello' }, async ({ payload }) => {
     if (!voice || payload.uid === state.me.id) return;
@@ -553,6 +554,14 @@ export async function joinVoice(chat) {
     stream.getTracks().forEach((t) => pc.addTrack(t, stream));
     pc.ontrack = (e) => {
       const [s] = e.streams;
+      // видео собеседника — плитка в сетке группового звонка (звук идёт через неё же)
+      if (e.track.kind === 'video') {
+        if (p.audio) { try { p.audio.pause(); } catch { /* */ } p.audio = null; }
+        if (!p.tile) p.tile = makeTile(p.name || 'участник', s, deafened, false);
+        renderVoiceBar();
+        return;
+      }
+      if (p.tile) return;
       const a = new Audio();
       a.srcObject = s;
       a.autoplay = true;
@@ -581,6 +590,7 @@ export async function joinVoice(chat) {
     if (!p) return;
     try { p.pc.close(); } catch { /* */ }
     if (p.audio) { try { p.audio.pause(); } catch { /* */ } }
+    if (p.tile) p.tile.remove();
     voice.peers.delete(uid);
     renderVoiceBar();
   }
@@ -596,6 +606,9 @@ export function leaveVoice() {
   getSb().removeChannel(voice.chan).catch(() => {});
   stopStream(voice.stream);
   voice.bar?.remove();
+  qs('#voice-grid')?.remove();
+  qs('#voice-bar')?.remove();
+  camOff = false;
   voice = null;
   micMuted = false;
   deafened = false;
@@ -611,6 +624,7 @@ function renderVoiceBar() {
         <div class="voice-bar-users" id="voice-users"></div>
         <div class="voice-bar-controls">
           <button class="call-btn sm" id="vb-mute" title="Микрофон">🎙</button>
+          ${voice.video ? '<button class="call-btn sm" id="vb-cam" title="Камера">📹</button>' : ''}
           <button class="call-btn sm" id="vb-deaf" title="Звук">🔊</button>
           <button class="call-btn danger sm" id="vb-leave" title="Покинуть">⏻</button>
         </div>
@@ -621,9 +635,19 @@ function renderVoiceBar() {
       voice.stream.getAudioTracks().forEach((t) => { t.enabled = !micMuted; });
       bar.querySelector('#vb-mute').classList.toggle('off', micMuted);
     });
+    bar.querySelector('#vb-cam')?.addEventListener('click', () => {
+      camOff = !camOff;
+      voice.stream.getVideoTracks().forEach((t) => { t.enabled = !camOff; });
+      bar.querySelector('#vb-cam').classList.toggle('off', camOff);
+      voice.localTile?.classList.toggle('cam-off', camOff);
+    });
     bar.querySelector('#vb-deaf').addEventListener('click', () => {
       deafened = !deafened;
-      voice.peers.forEach((p) => { if (p.audio) p.audio.muted = deafened; });
+      voice.peers.forEach((p) => {
+        if (p.audio) p.audio.muted = deafened;
+        const v = p.tile && p.tile.querySelector('video');
+        if (v) v.muted = deafened;
+      });
       bar.querySelector('#vb-deaf').classList.toggle('off', deafened);
     });
     bar.querySelector('#vb-leave').addEventListener('click', () => leaveVoice());
@@ -639,4 +663,26 @@ function renderVoiceBar() {
         <span class="vu-dot"></span>${esc(p.name || 'участник')}
       </span>`).join('')}`;
   if (!voice) bar.remove();
+  renderGrid();
+}
+
+// ---------- сетка видео группового звонка ----------
+function makeTile(name, stream, muted, mirror) {
+  const t = el(`<div class="vtile ${mirror ? 'mirror' : ''}"><video autoplay playsinline></video><span class="vtile-name">${esc(name)}</span></div>`);
+  const v = t.querySelector('video');
+  v.srcObject = stream; v.muted = muted;
+  v.play().catch(() => {});
+  return t;
+}
+function renderGrid() {
+  if (!voice) return;
+  const tiles = [];
+  if (voice.video && voice.localTile) tiles.push(voice.localTile);
+  voice.peers.forEach((p) => { if (p.tile) tiles.push(p.tile); });
+  let grid = qs('#voice-grid');
+  if (!tiles.length) { if (grid) grid.remove(); return; }
+  if (!grid) { grid = el('<div id="voice-grid" class="voice-grid"></div>'); document.body.appendChild(grid); }
+  grid.dataset.n = String(tiles.length);
+  tiles.forEach((t) => { if (t.parentNode !== grid) grid.appendChild(t); });
+  [...grid.children].forEach((c) => { if (!tiles.includes(c)) c.remove(); });
 }

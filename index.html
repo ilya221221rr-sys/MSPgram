@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>MSPgram — мессенджер</title>
-<meta name="description" content="MSPgram — свой мессенджер: личные чаты, группы, фото и файлы. Бесплатно и без VPN.">
+<meta name="description" content="MSPgram — современный мессенджер: чаты, группы, звонки, ИИ-ассистент. Бесплатно и без VPN.">
 <meta name="theme-color" content="#0d1220">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/png" href="icons/icon-192.png">
@@ -14,6 +14,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="MSPgram">
 <link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/v18.css">
 </head>
 <body>
 
@@ -112,56 +113,70 @@
   <nav id="server-rail" class="server-rail"></nav>
   <aside class="sidebar">
     <header class="sidebar-head">
-      <button id="profile-btn" class="avatar-btn" title="Настройки профиля"></button>
-      <div class="sidebar-title">MSPgram <span id="app-version">v17</span></div>
-      <button id="saved-btn" class="icon-btn" title="Избранное — личные заметки">🔖</button>
-      <button id="new-group-btn" class="icon-btn" title="Новая группа">＋</button>
-      <button id="settings-btn" class="icon-btn" title="Настройки">⚙️</button>
+      <button id="profile-btn" class="avatar-btn" title="Профиль и настройки"></button>
+      <div class="sidebar-title">MSPgram <span id="app-version">v18</span></div>
+      <button id="notif-btn" class="icon-btn has-badge" title="Уведомления"><span data-ic="bell"></span><span id="notif-badge" class="nbadge hidden"></span></button>
+      <button id="new-group-btn" class="icon-btn" title="Новый сервер или группа"><span data-ic="plus"></span></button>
     </header>
     <div class="search-wrap">
-      <input id="search-input" type="search" placeholder="Поиск чатов и людей по нику" autocomplete="off">
+      <span class="search-ic" data-ic="search" data-ic-size="17"></span>
+      <input id="search-input" type="search" placeholder="Поиск: люди, чаты, сообщения, @ник" autocomplete="off">
     </div>
+    <div id="list-filters" class="list-filters"></div>
     <div id="search-results" class="chat-list hidden"></div>
     <nav id="chat-list" class="chat-list"></nav>
+    <nav class="side-nav">
+      <button id="nav-chats" class="nav-btn active" title="Чаты"><span data-ic="chat"></span><em>Чаты</em></button>
+      <button id="nav-friends" class="nav-btn has-badge" title="Друзья"><span data-ic="users"></span><em>Друзья</em><i id="friends-badge" class="nbadge hidden"></i></button>
+      <button id="nav-ai" class="nav-btn" title="ИИ-ассистент"><span data-ic="sparkles"></span><em>MSP AI</em></button>
+      <button id="saved-btn" class="nav-btn" title="Избранное — личные заметки"><span data-ic="bookmark"></span><em>Избранное</em></button>
+      <button id="settings-btn" class="nav-btn" title="Настройки"><span data-ic="settings"></span><em>Настройки</em></button>
+    </nav>
   </aside>
 
   <main class="chat-area">
     <div id="chat-empty" class="chat-empty">
-      <div class="empty-logo">💬</div>
+      <div class="empty-logo"><span data-ic="logo" data-ic-size="46"></span></div>
       <h2>Выбери чат</h2>
-      <p>Найди человека через <b>поиск сверху</b> — по нику или имени.<br>Или создай <b>группу</b> кнопкой ＋.</p>
+      <p>Найди человека через <b>поиск</b> — по нику или имени.<br>Создай <b>группу или сервер</b> кнопкой ＋, поболтай с <b>MSP AI</b> ✨</p>
     </div>
 
     <section id="chat-view" class="chat-view hidden">
       <header class="chat-head" id="chat-head">
-        <button id="back-btn" class="icon-btn back" title="Назад">←</button>
+        <button id="back-btn" class="icon-btn back" title="Назад"><span data-ic="back"></span></button>
         <div id="chat-head-info" class="chat-head-info"></div>
         <button id="channel-pill" class="channel-pill hidden" title="Каналы"></button>
-        <button id="call-audio" class="icon-btn hidden" title="Позвонить">📞</button>
-        <button id="call-video" class="icon-btn hidden" title="Видеозвонок">📹</button>
-        <button id="voice-btn" class="icon-btn hidden" title="Голосовой канал">🎙</button>
-        <button id="chat-search-btn" class="icon-btn" title="Поиск по сообщениям">🔍</button>
-        <button id="chat-info-btn" class="icon-btn" title="Информация">⋯</button>
+        <button id="call-audio" class="icon-btn hidden" title="Позвонить"><span data-ic="phone"></span></button>
+        <button id="call-video" class="icon-btn hidden" title="Видеозвонок"><span data-ic="video"></span></button>
+        <button id="voice-btn" class="icon-btn hidden" title="Групповой голосовой звонок"><span data-ic="mic"></span></button>
+        <button id="gvideo-btn" class="icon-btn hidden" title="Групповой видеозвонок"><span data-ic="video"></span></button>
+        <button id="ai-sum-btn" class="icon-btn" title="ИИ: кратко о переписке"><span data-ic="sparkles"></span></button>
+        <button id="chat-search-btn" class="icon-btn" title="Поиск по сообщениям"><span data-ic="search"></span></button>
+        <button id="chat-info-btn" class="icon-btn" title="Информация"><span data-ic="more"></span></button>
       </header>
       <div id="pinned-bar" class="pinned-bar hidden"></div>
       <div id="search-row" class="search-row hidden">
         <input id="chat-search" type="search" placeholder="Искать в этом чате…" autocomplete="off">
-        <button id="search-close" class="icon-btn" title="Скрыть">✕</button>
+        <button id="search-close" class="icon-btn" title="Скрыть"><span data-ic="x" data-ic-size="18"></span></button>
         <div id="chat-search-results" class="chat-search-results hidden"></div>
       </div>
       <div id="messages" class="messages"></div>
-      <button id="scroll-down" class="scroll-down" title="Прокрутить вниз">↓<span class="sd-badge hidden"></span></button>
+      <button id="scroll-down" class="scroll-down" title="Прокрутить вниз"><span data-ic="down" data-ic-size="18"></span><span class="sd-badge hidden"></span></button>
       <div class="composer">
         <div id="reply-bar" class="reply-bar hidden"></div>
+        <div id="composer-lock" class="composer-lock hidden">🔒 В этом чате писать могут только администраторы</div>
         <div class="composer-row">
-          <button id="attach-btn" class="icon-btn" title="Прикрепить файл или фото">📎</button>
+          <button id="attach-btn" class="icon-btn" title="Прикрепить файл или фото"><span data-ic="clip"></span></button>
           <input id="file-input" type="file" multiple class="hidden">
-          <button id="sticker-btn" class="icon-btn" title="Стикеры">🙂</button>
+          <button id="sticker-btn" class="icon-btn" title="Стикеры"><span data-ic="smile"></span></button>
+          <button id="gif-btn" class="icon-btn" title="GIF"><span data-ic="gif"></span></button>
           <div id="sticker-panel" class="sticker-panel hidden"></div>
-          <button id="mic-btn" class="icon-btn" title="Голосовое сообщение">🎤</button>
-          <button id="video-btn" class="icon-btn" title="Видеосообщение (60 сек)">🎥</button>
-          <textarea id="msg-input" rows="1" placeholder="Сообщение…  Enter — отправить"></textarea>
-          <button id="send-btn" class="send-btn" title="Отправить">➤</button>
+          <div id="gif-panel" class="sticker-panel gif-panel hidden"></div>
+          <button id="ai-write-btn" class="icon-btn ai-btn" title="ИИ поможет с текстом"><span data-ic="wand"></span></button>
+          <button id="mic-btn" class="icon-btn" title="Голосовое сообщение"><span data-ic="mic"></span></button>
+          <button id="video-btn" class="icon-btn" title="Видеосообщение (60 сек)"><span data-ic="video"></span></button>
+          <textarea id="msg-input" rows="1" placeholder="Сообщение…"></textarea>
+          <button id="send-btn" class="send-btn" title="Отправить"><span data-ic="send" data-ic-size="19"></span></button>
         </div>
       </div>
     </section>

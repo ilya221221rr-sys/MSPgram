@@ -8,6 +8,7 @@ import { esc, el, avatarHTML, relLastSeen, toast } from './utils.js';
 const ADMIN_BADGE = (p) => {
   const badges = [];
   if (p.is_admin) badges.push('<span class="adm-badge admin">АДМИН</span>');
+  else if (p.is_moderator) badges.push('<span class="adm-badge mod">МОДЕР</span>');
   if (p.is_banned && (!p.banned_until || new Date(p.banned_until) > new Date())) {
     badges.push('<span class="adm-badge banned">БАН</span>');
   }
@@ -22,7 +23,8 @@ function memberTitle(chat) {
 }
 
 export async function openAdminPanel() {
-  if (!state.me || !state.me.is_admin) { toast('Только для админов'); return; }
+  if (!state.me || !(state.me.is_admin || state.me.is_moderator)) { toast('Только для админов и модераторов'); return; }
+  const isAdm = !!state.me.is_admin;
 
   const m = el(`
     <div class="modal-overlay admin-overlay">
@@ -30,7 +32,7 @@ export async function openAdminPanel() {
         <h3>🛡 Админ-панель</h3>
         <div class="adm-tabs">
           <button class="adm-tab active" data-tab="users">Пользователи</button>
-          <button class="adm-tab" data-tab="log">Переписка</button>
+          ${isAdm ? '<button class="adm-tab" data-tab="log">Переписка</button><button class="adm-tab" data-tab="groups">Сообщества</button>' : ''}
           <button class="adm-tab" data-tab="reports">Жалобы</button>
           <button class="adm-tab" data-tab="stats">Статистика</button>
         </div>
@@ -67,11 +69,28 @@ export async function openAdminPanel() {
             ${isBanned ? `<div class="adm-user-sub danger">Причина: ${esc(p.ban_reason || 'не указана')}${p.banned_until ? ` · до ${new Date(p.banned_until).toLocaleString('ru')}` : ' · навсегда'}</div>` : ''}
           </div>
           <div class="adm-user-actions">
-            <button class="adm-btn" data-act="rename" data-id="${p.id}" title="Изменить имя и юзернейм">✏️</button>
+            ${isAdm ? `<button class="adm-btn" data-act="role" data-id="${p.id}" title="Роль: пользователь / модератор / админ">🎖</button>
+            <button class="adm-btn" data-act="rename" data-id="${p.id}" title="Изменить имя и юзернейм">✏️</button>` : ''}
             <button class="adm-btn ${isBanned ? 'ok' : 'danger'}" data-act="ban" data-id="${p.id}" data-banned="${isBanned ? 1 : 0}">${isBanned ? '✅' : '🚫'}</button>
           </div>
         </div>`);
       body.appendChild(row);
+    });
+
+    body.querySelectorAll('[data-act=role]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const p = users.find((x) => x.id === btn.dataset.id);
+        if (p.id === state.me.id) { toast('Свою роль менять нельзя'); return; }
+        const cur = p.is_admin ? 3 : p.is_moderator ? 2 : 1;
+        const v = window.prompt(`Роль для ${p.display_name || p.nickname}:\n1 — пользователь\n2 — модератор (жалобы и баны)\n3 — администратор (полный доступ)`, String(cur));
+        if (v === null) return;
+        const n = parseInt(v, 10);
+        if (![1, 2, 3].includes(n)) { toast('Введи 1, 2 или 3'); return; }
+        try {
+          await dbApi.adminSetRole(p.id, { is_admin: n === 3, is_moderator: n === 2 });
+          toast('Роль обновлена ✓'); renderUsers();
+        } catch (e) { toast('Ошибка: ' + e.message); }
+      });
     });
 
     body.querySelectorAll('[data-act=rename]').forEach((btn) => {
@@ -265,6 +284,36 @@ export async function openAdminPanel() {
       <div class="stat-chart">${bars}</div>`;
   }
 
+  // ---------- сообщества: управление группами и каналами ----------
+  async function renderGroups() {
+    body.innerHTML = '<div class="adm-empty">Загружаю…</div>';
+    let chats = [];
+    try { chats = (await dbApi.adminFetchChats()).filter((c) => c.type === 'group'); }
+    catch (e) { body.innerHTML = `<div class="adm-empty">${esc(e.message)}</div>`; return; }
+    if (!chats.length) { body.innerHTML = '<div class="adm-empty">Сообществ пока нет</div>'; return; }
+    body.innerHTML = '';
+    chats.forEach((c) => {
+      const n = (c.chat_members || []).length;
+      const row = el(`<div class="adm-user-row">
+        ${avatarHTML(c.avatar_url, c.title || 'Группа', 'md', false)}
+        <div class="adm-user-main"><div class="adm-user-name">${esc(c.title || 'Группа')} ${c.is_public ? '<span class="adm-badge">ПУБЛИЧНОЕ</span>' : ''}${c.only_admins_post ? ' <span class="adm-badge">КАНАЛ</span>' : ''}</div>
+        <div class="adm-user-sub">${n} участн. · создано ${new Date(c.created_at).toLocaleDateString('ru')}</div></div>
+        <div class="adm-user-actions">
+          <button class="adm-btn" data-act="priv" title="Сделать ${c.is_public ? 'приватным' : 'публичным'}">${c.is_public ? '🔒' : '🌐'}</button>
+          <button class="adm-btn danger" data-act="del" title="Удалить сообщество">🗑</button></div></div>`);
+      row.querySelector('[data-act=priv]').addEventListener('click', async () => {
+        try { await dbApi.updateChatSettings(c.id, { is_public: !c.is_public }); toast('Готово ✓'); renderGroups(); }
+        catch (e) { toast('Ошибка: ' + e.message); }
+      });
+      row.querySelector('[data-act=del]').addEventListener('click', async () => {
+        if (!window.confirm(`Удалить «${c.title}» вместе с историей? Это необратимо.`)) return;
+        try { await dbApi.adminDeleteChat(c.id); toast('Удалено ✓'); renderGroups(); }
+        catch (e) { toast('Ошибка: ' + e.message); }
+      });
+      body.appendChild(row);
+    });
+  }
+
   // ---------- табы ----------
   m.querySelectorAll('.adm-tab').forEach((tab) => {
     tab.addEventListener('click', () => {
@@ -272,6 +321,7 @@ export async function openAdminPanel() {
       tab.classList.add('active');
       if (tab.dataset.tab === 'users') renderUsers();
       else if (tab.dataset.tab === 'log') renderLog();
+      else if (tab.dataset.tab === 'groups') renderGroups();
       else if (tab.dataset.tab === 'reports') renderReports();
       else renderStats();
     });

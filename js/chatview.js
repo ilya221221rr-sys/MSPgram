@@ -8,6 +8,9 @@ import { recordVoice, recordVideo, canRecordVoice, canRecordVideo, extOf } from 
 import { startCall, joinVoice, leaveVoice, inVoice, initCallsUI } from './calls.js';
 import { initStickers, stickerEmojiOf, stickerAnimOf } from './stickers.js';
 import { openProfile } from './profile.js';
+import { translationHTML, openTranslate, suggestReplies } from './ai.js';
+import { openGroupSettings } from './extras.js';
+import { presenceLabel, isShownOnline } from './api-v18.js';
 
 let msgs = [];
 let msgIds = new Set();
@@ -117,14 +120,14 @@ function renderHeader() {
   const other = otherMember(chat);
   const isTyping = typingText(chat.id);
   const saved = isSavedChat(chat);
-  const online = !saved && chat.type === 'direct' && other && state.online.has(other.id);
+  const online = !saved && chat.type === 'direct' && isShownOnline(other);
 
   let sub;
   if (isTyping) sub = isTyping;
   else if (saved) sub = 'только для тебя';
   else if (chat.type === 'direct') {
     const nick = other ? `@${other.nickname}` : '';
-    sub = nick ? `${nick} · ${relLastSeen(other?.last_seen, online)}` : relLastSeen(other?.last_seen, online);
+    sub = nick ? `${nick} · ${presenceLabel(other, relLastSeen)}` : presenceLabel(other, relLastSeen);
   } else {
     sub = `${(chat.members || []).length} участник${plural((chat.members || []).length)}`;
   }
@@ -151,6 +154,16 @@ function renderHeader() {
     const cur = (chat._channels || []).find((c) => c.id === chat._channelId);
     pill.innerHTML = `<span class="ch-hash">#</span>${esc(cur ? cur.name : 'общий')} <span class="ch-caret">▾</span>`;
   }
+  applyPostPerms(chat);
+}
+
+// «только админы пишут»: прячем поле ввода (сервер всё равно не пропустит)
+function applyPostPerms(chat) {
+  const lock = qs('#composer-lock'); const row = qs('.composer-row');
+  if (!lock || !row) return;
+  const locked = chat.type === 'group' && chat.only_admins_post === true && !canModerate(chat);
+  lock.classList.toggle('hidden', !locked);
+  row.classList.toggle('hidden', locked);
 }
 
 function plural(n) {
@@ -293,8 +306,11 @@ function renderPinnedBar() {
 // ================== СООБЩЕНИЯ ==================
 
 function linkify(escaped) {
+  const myNick = (state.me?.nickname || '').toLowerCase();
   return escaped.replace(/(https?:\/\/[^\s<]+[^\s<.,:;"')\]!?])/g,
-    '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
+    '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>')
+    .replace(/(^|[\s(>])@([\p{L}\p{N}_]{3,20})/gu, (all, pre, nick) =>
+      `${pre}<span class="mention${nick.toLowerCase() === myNick ? ' me' : ''}">@${nick}</span>`);
 }
 
 function barsHTML(seed) {
@@ -381,10 +397,11 @@ function messageEl(m, chat, showDaySep) {
 
   let ticks = '';
   if (own) {
-    const othersRead = (chat.members || [])
-      .filter((x) => x.user_id !== meId && x.last_read_at)
-      .some((x) => new Date(x.last_read_at) >= new Date(m.created_at));
-    ticks = `<span class="msg-ticks${othersRead ? ' read' : ''}">${othersRead ? '✓✓' : '✓'}</span>`;
+    const others = (chat.members || []).filter((x) => x.user_id !== meId);
+    const at = new Date(m.created_at);
+    const read = others.some((x) => x.last_read_at && new Date(x.last_read_at) >= at);
+    const delivered = read || others.some((x) => x.last_delivered_at && new Date(x.last_delivered_at) >= at);
+    ticks = `<span class="msg-ticks${read ? ' read' : delivered ? ' delivered' : ''}" title="${read ? 'Прочитано' : delivered ? 'Доставлено' : 'Отправлено'}">${delivered ? '✓✓' : '✓'}</span>`;
   }
   const edited = m.edited_at ? '<span class="msg-edited">изм.</span>' : '';
 
@@ -399,6 +416,7 @@ function messageEl(m, chat, showDaySep) {
       <div class="msg${own ? ' out' : ' in'}">
         ${quote}${fwd}${content}
         ${bodyHTML || (!content ? '<div class="msg-text muted">Пустое сообщение</div>' : '')}
+        ${translationHTML(m.id)}
         ${reactionsHTML(m)}
         <div class="msg-meta"><span class="msg-time">${fmtTime(m.created_at)}</span>${edited}${ticks}</div>
         <button class="msg-more" data-more="${esc(m.id)}" title="Ещё">⋯</button>
@@ -615,6 +633,7 @@ function openMsgMenu(x, y, msgId) {
       <button data-act="copy">⧉ Копировать</button>
       <button data-act="forward">➦ Переслать…</button>
       <button data-act="fav">🔖 В избранное</button>
+      ${m.body ? '<button data-act="translate">🌐 Перевести</button><button data-act="aireply">✨ Ответ от ИИ</button>' : ''}
       ${(mod || own) ? `<button data-act="pin">📌 ${pinned ? 'Открепить' : 'Закрепить'}</button>` : ''}
       ${own && !m.attachment_type ? '<button data-act="edit">✏️ Изменить</button>' : ''}
       ${own ? '<button class="danger" data-act="del">🗑 Удалить</button>' : ''}
@@ -717,6 +736,8 @@ function doAction(act, msgId) {
     renderMessages(false);
   }
   if (act === 'del') handleDelete(msgId);
+  if (act === 'translate') openTranslate(m);
+  if (act === 'aireply') suggestReplies(m);
   if (act === 'pin') togglePin(m);
 }
 
@@ -789,7 +810,7 @@ function openForwardModal(src) {
 
 // ================== ПРЫЖОК К СООБЩЕНИЮ + ПОИСК ==================
 
-async function jumpToMessage(msgId) {
+export async function jumpToMessage(msgId) {
   if (!msgs.some((x) => x.id === msgId)) {
     // не загружено — подгружаем историю до этого момента
     const target = getMsg(msgId) || await findMessageAnywhere(msgId);
@@ -970,14 +991,14 @@ async function openChatInfo() {
 
   if (chat.type === 'direct') {
     const other = otherMember(chat);
-    const online = other && state.online.has(other.id);
+    const online = isShownOnline(other);
     const m = el(`
       <div class="modal-overlay">
         <div class="modal center">
           ${avatarHTML(other?.avatar_url, other ? (other.display_name || other.nickname) : '?', 'xl', false)}
           <h3>${esc(other ? (other.display_name || other.nickname) : 'Пользователь')}</h3>
           <div class="info-nick">@${esc(other?.nickname || '')}</div>
-          <div class="info-status ${online ? 'on' : ''}">${esc(relLastSeen(other?.last_seen, online))}</div>
+          <div class="info-status ${online ? 'on' : ''}">${esc(presenceLabel(other, relLastSeen))}</div>
           ${other?.status_text ? `<p class="modal-text">«${esc(other.status_text)}»</p>` : ''}
           ${other?.bio ? `<p class="modal-text">${esc(other.bio)}</p>` : ''}
           <div class="chat-flag-row">
@@ -1059,6 +1080,7 @@ async function openChatInfo() {
         </div>
         <div class="modal-actions">
           ${mod ? '<button class="btn primary" id="ci-invite">🔗 Ссылка-приглашение</button>' : ''}
+          ${isOwner ? '<button class="btn ghost" id="ci-perms">⚙️ Права и описание</button>' : ''}
           <button class="btn ghost" data-act="close">Закрыть</button>
           ${isOwner ? '<button class="btn danger" id="ci-delete">Удалить сервер</button>' : '<button class="btn danger" id="ci-leave">Покинуть</button>'}
         </div>
@@ -1098,6 +1120,12 @@ async function openChatInfo() {
           .catch(() => toast('Скопируй вручную'));
       });
     } catch (e) { qs('#ci-error', m).textContent = e.message; }
+  });
+
+  const permsBtn = qs('#ci-perms', m);
+  if (permsBtn) permsBtn.addEventListener('click', () => {
+    m.remove();
+    openGroupSettings(chat, () => { renderHeader(); renderChatListBadge(); });
   });
 
   // повысить до админа
@@ -1359,6 +1387,12 @@ export function initChatViewUI() {
     if (inVoice()) { leaveVoice(); return; }
     await joinVoice(chat);
   });
+  qs('#gvideo-btn').addEventListener('click', async () => {
+    const chat = state.chats.get(state.activeChatId);
+    if (!chat) return;
+    if (inVoice()) { leaveVoice(); return; }
+    await joinVoice(chat, true);
+  });
   qs('#chat-search-btn').addEventListener('click', () => setSearchOpen(!searchOpen));
   qs('#search-close').addEventListener('click', () => setSearchOpen(false));
   qs('#chat-search').addEventListener('input', debounce(doChatSearch, 250));
@@ -1519,6 +1553,7 @@ export function updateCallButtons() {
   qs('#call-audio').classList.toggle('hidden', !direct);
   qs('#call-video').classList.toggle('hidden', !direct);
   qs('#voice-btn').classList.toggle('hidden', !server);
+  qs('#gvideo-btn').classList.toggle('hidden', !server);
 }
 
 // ================== ЛАЙТБОКС ==================
@@ -1545,3 +1580,8 @@ export function initLightboxUI() {
     if (e.key === 'Escape') { lb.classList.add('hidden'); closeMsgMenu(); }
   });
 }
+
+
+// ---------- доступ для модулей v18 ----------
+export function getLoadedMessages() { return msgs; }
+export function refreshMessages() { renderMessages(false); }

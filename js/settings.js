@@ -1,6 +1,7 @@
 // Настройки: профиль, уведомления, внешний вид (как в Telegram — свой раздел)
 import { state, dbApi, storeApi, authApi } from './api.js';
 import { openAdminPanel } from './admin.js';
+import { mountExtraSettings } from './extras.js';
 import {
   qs, esc, el, toast, avatarHTML, getPrefs, setPrefs, confirmDialog,
 } from './utils.js';
@@ -19,11 +20,21 @@ export function applyPrefs() {
   const p = getPrefs();
   const r = document.documentElement.style;
   const accent = ACCENTS[p.accent] || ACCENTS.ocean;
-  r.setProperty('--accent', accent.a);
-  r.setProperty('--accent2', accent.b);
-  r.setProperty('--out', accent.out);
+  if (p.accentCustom) {
+    // свой цвет: производные оттенки считаем сами
+    r.setProperty('--accent', p.accentCustom);
+    r.setProperty('--accent2', `color-mix(in srgb, ${p.accentCustom} 62%, #8b5cf6)`);
+    r.setProperty('--out', `linear-gradient(135deg, color-mix(in srgb, ${p.accentCustom} 82%, #000), color-mix(in srgb, ${p.accentCustom} 55%, #4338ca))`);
+  } else {
+    r.setProperty('--accent', accent.a);
+    r.setProperty('--accent2', accent.b);
+    r.setProperty('--out', accent.out);
+  }
   r.setProperty('--msg-font', (MSG_SIZES[p.msgSize] || MSG_SIZES.m).px);
-  document.documentElement.dataset.theme = (p.theme === 'light') ? 'light' : 'dark';
+  const auto = p.theme === 'auto' && window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches;
+  document.documentElement.dataset.theme = (p.theme === 'light' || auto) ? 'light' : 'dark';
+  const meta = document.querySelector('meta[name=theme-color]');
+  if (meta) meta.content = document.documentElement.dataset.theme === 'light' ? '#f3f5fb' : '#0d1220';
 }
 
 export function openSettingsModal() {
@@ -94,12 +105,14 @@ export function openSettingsModal() {
           <div class="chip-row" id="st-sizes"></div>
         </div>
 
+        <div id="st-extra"></div>
+
         <div class="settings-sec">Аккаунт</div>
-        ${me.is_admin ? `
+        ${(me.is_admin || me.is_moderator) ? `
         <div class="settings-row">
           <div>
-            <div class="settings-row-title">🛡 Админ-панель</div>
-            <div class="settings-row-sub">Пользователи, баны, переписка</div>
+            <div class="settings-row-title">🛡 ${me.is_admin ? 'Админ-панель' : 'Панель модератора'}</div>
+            <div class="settings-row-sub">Пользователи, жалобы, сообщества, статистика</div>
           </div>
           <button class="btn primary sm" id="st-admin">Открыть</button>
         </div>` : ''}
@@ -124,6 +137,7 @@ export function openSettingsModal() {
     </div>`);
 
   document.querySelector('#modal-root').appendChild(m);
+  try { mountExtraSettings(m); } catch (e) { console.warn('extras:', e); }
   const close = () => m.remove();
   m.addEventListener('click', (e) => { if (e.target === m || e.target.closest('[data-act=close]')) close(); });
 
@@ -235,6 +249,7 @@ export function openSettingsModal() {
   const THEMES = [
     { key: 'dark', label: '🌙 Тёмная' },
     { key: 'light', label: '☀️ Светлая' },
+    { key: 'auto', label: '🖥 Как в системе' },
   ];
   THEMES.forEach((t) => {
     const chip = el(`<button class="size-chip ${((prefs.theme || 'dark') === t.key) ? 'sel' : ''}" data-theme-key="${t.key}">${t.label}</button>`);

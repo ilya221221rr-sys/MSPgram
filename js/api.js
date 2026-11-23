@@ -81,6 +81,7 @@ export const authApi = {
     return await _sb.auth.resend({ type: 'signup', email });
   },
   async signOut() {
+    try { await dbApi.endSession?.(); } catch { /* сессия уже закрыта */ }
     await _sb.auth.signOut();
     _sb.removeAllChannels();
   },
@@ -195,6 +196,7 @@ export const dbApi = {
       .select('*, chat_members(*, profiles(*))')
       .order('last_message_at', { ascending: false });
     if (error) handleErr(error, 'Не удалось получить чаты');
+    for (const c of data || []) c.members = c.chat_members;
     return data || [];
   },
 
@@ -363,7 +365,7 @@ export const dbApi = {
 
   async loadChats() {
     const { data, error } = await _sb.from('chats')
-      .select('*, chat_members(*, profiles(*))')
+      .select('*, members:chat_members(*, profiles(*))')
       .order('last_message_at', { ascending: false });
     if (error) handleErr(error, 'Не удалось загрузить чаты');
     for (const c of data || []) state.chats.set(c.id, c);
@@ -372,7 +374,7 @@ export const dbApi = {
 
   async loadChatRow(chatId) {
     const { data, error } = await _sb.from('chats')
-      .select('*, chat_members(*, profiles(*))')
+      .select('*, members:chat_members(*, profiles(*))')
       .eq('id', chatId).maybeSingle();
     if (error) handleErr(error, 'Не удалось загрузить чат');
     if (data) state.chats.set(data.id, data);
