@@ -37,7 +37,11 @@ export function saveConfig(cfg) {
 
 export function initClient(cfg) {
   _sb = window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, {
-    auth: { persistSession: true, autoRefreshToken: true },
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: false,
+    },
   });
   return _sb;
 }

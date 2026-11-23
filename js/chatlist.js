@@ -99,6 +99,7 @@ export function renderChatList() {
     list.appendChild(el('<div class="search-section">Серверы</div>'));
     servers.forEach((c) => list.appendChild(chatRowEl(c, false)));
   }
+  import('./chatlist.js').then((mm) => mm.renderServerRail());
 }
 
 function chatRowEl(chat, inSearch) {
@@ -267,4 +268,35 @@ export function renderSidebarMe() {
   if (!btn || !state.me) return;
   btn.innerHTML = avatarHTML(state.me.avatar_url, state.me.display_name || state.me.nickname, 'md');
   btn.title = 'Настройки: @' + (state.me.nickname || '');
+}
+
+// ---------- рейка серверов слева (как в Discord) ----------
+export function renderServerRail() {
+  const rail = qs('#server-rail');
+  if (!rail || !state.me) return;
+  const servers = [...state.chats.values()].filter((c) => c.type === 'group')
+    .sort((a, b) => new Date(b.last_message_at) - new Date(a.last_message_at));
+  const unread = (c) => state.unread.get(c.id) || 0;
+
+  rail.innerHTML = `
+    <button class="rail-btn home ${!state.activeChatId || state.chats.get(state.activeChatId)?.type !== 'group' ? 'active' : ''}"
+      title="Личные чаты" id="rail-home">
+      <span class="rail-logo">✦</span>
+    </button>
+    <div class="rail-sep"></div>
+    ${servers.map((c) => `
+      <button class="rail-btn ${state.activeChatId === c.id ? 'active' : ''}"
+        title="${esc(chatTitleFor(c))}${unread(c) ? ` · ${unread(c)} новых` : ''}" data-rail="${c.id}">
+        <span class="rail-letter">${esc((chatTitleFor(c) || 'S')[0].toUpperCase())}</span>
+        ${unread(c) ? `<span class="rail-badge"></span>` : ''}
+      </button>`).join('')}
+    <button class="rail-btn add" id="rail-add" title="Создать сервер">＋</button>`;
+
+  rail.querySelectorAll('[data-rail]').forEach((b) =>
+    b.addEventListener('click', () => bus.emit('open-chat', b.dataset.rail)));
+  qs('#rail-home', rail)?.addEventListener('click', () => {
+    const first = [...state.chats.values()].find((c) => c.type !== 'group');
+    if (first) bus.emit('open-chat', first.id);
+  });
+  qs('#rail-add', rail)?.addEventListener('click', openServerModal);
 }

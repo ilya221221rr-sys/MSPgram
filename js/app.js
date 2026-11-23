@@ -56,9 +56,13 @@ async function boot() {
   initChatViewUI();
   initLightboxUI();
   wireBusEvents();
+  initCallsUI();
 
   // при изменении профиля — перерисовать чаты (имена и аватарки)
-  bus.on('profile-synced', () => import('./chatlist.js').then((m) => m.renderChatList()));
+  bus.on('profile-synced', () => import('./chatlist.js').then((m) => {
+    m.renderChatList();
+    m.renderServerRail();
+  }));
 
   // 3. Ссылка-приглашение (?join=КОД) — обработаем после входа
   pendingJoin = new URLSearchParams(location.search).get('join');
@@ -83,9 +87,19 @@ async function boot() {
       showAuth('newpass');
       return;
     }
+    // резервная копия сессии — чтобы вход не слетал между визитами
+    if (session) {
+      try {
+        localStorage.setItem('msp_session_backup', JSON.stringify({
+          access_token: session.access_token,
+          refresh_token: session.refresh_token,
+        }));
+      } catch { /* */ }
+    }
     if (session && session.user && !isRecovery) {
       await enterApp(session);
-    } else if (!session && !isRecovery) {
+    } else if (!session && event === 'SIGNED_OUT') {
+      try { localStorage.removeItem('msp_session_backup'); } catch { /* */ }
       await leaveApp();
     }
   });
@@ -107,7 +121,19 @@ async function boot() {
   } else if (session && !hasAuthCode) {
     await enterApp(session);
   } else if (!session) {
-    showAuth();
+    // сессия потерялась (сброс кэша, смена ключей) — пробуем резервную копию
+    let restored = false;
+    try {
+      const backup = JSON.parse(localStorage.getItem('msp_session_backup') || 'null');
+      if (backup && backup.refresh_token && backup.access_token) {
+        const { data, error } = await getSb().auth.setSession({
+          access_token: backup.access_token,
+          refresh_token: backup.refresh_token,
+        });
+        if (!error && data && data.user) restored = true;
+      }
+    } catch { /* обычный вход */ }
+    if (!restored) showAuth();
   }
 
   // после смены пароля по ссылке — чистим URL и входим в приложение
