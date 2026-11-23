@@ -1,7 +1,7 @@
 // Service Worker: офлайн-кэш интерфейса (PWA)
 // Стратегия: сеть — всегда первая (свежий код гарантированно),
 // кэш используется только когда интернета нет.
-const VERSION = 'mspgram-v11';
+const VERSION = 'mspgram-v12';
 const PRECACHE = [
   './',
   './index.html',
