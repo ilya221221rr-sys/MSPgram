@@ -196,15 +196,14 @@ async function makePeer(c, isCaller) {
     if (v && c.video) {
       v.srcObject = stream;
       v.classList.remove('hidden');
-      callStatus('_connected_');
+      callStatus('Соединено ✓');
       startTimer();
       call.connected = true;
     } else {
       // аудиозвонок — просто статус
-      callStatus('_connected_');
+      callStatus('Соединено ✓');
       startTimer();
       call.connected = true;
-      new Audio(); void 0;
       const audio = new Audio();
       audio.srcObject = stream;
       audio.autoplay = true;
@@ -323,13 +322,13 @@ async function answerRing(p) {
       if (call.video) {
         const v = qs('#call-remote-video');
         if (v) { v.srcObject = stream; v.classList.remove('hidden'); }
-        callStatus('_connected_');
+        callStatus('Соединено ✓');
       } else {
         const audio = new Audio();
         audio.srcObject = stream;
         audio.autoplay = true;
         call.remoteAudio = audio;
-        callStatus('_connected_');
+        callStatus('Соединено ✓');
       }
       startTimer();
     };

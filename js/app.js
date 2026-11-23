@@ -13,6 +13,7 @@ import {
   onPresenceChanged, initLightboxUI,
 } from './chatview.js';
 import { applyPrefs } from './settings.js';
+import { initCallsUI } from './calls.js';
 import { startPresence, stopPresence } from './presence.js';
 
 let realtimeChan = null;
