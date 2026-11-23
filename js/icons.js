@@ -22,6 +22,15 @@ const P = {
   wand: '<path d="M15 4V2M15 16v-2M8 9h2M20 9h2M17.8 11.8L19 13M17.8 6.2L19 5M12.2 6.2L11 5M3 21l9-9"/>',
   shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>',
   check: '<path d="M20 6L9 17l-5-5"/>',
+  image: '<rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="9" r="1.7"/><path d="M21 16l-5-5-8 8"/>',
+  flip: '<path d="M3 12a9 9 0 0 1 15.5-6.2L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15.5 6.2L3 16"/><path d="M3 21v-5h5"/>',
+  minimize: '<path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7"/>',
+  expand: '<path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>',
+  pip: '<rect x="2" y="4" width="20" height="16" rx="3"/><rect x="12" y="12" width="7" height="5" rx="1.2"/>',
+  user: '<circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/>',
+  circle: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.2"/>',
+  stop: '<rect x="6" y="6" width="12" height="12" rx="2.5"/>',
+  trash: '<path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/>',
   logo: '<path d="M21.5 3L2.5 10.3c-.9.3-.9 1.5 0 1.9l4.7 1.8 1.8 5.6c.2.7 1.1.9 1.6.4l2.6-2.6 4.5 3.3c.6.4 1.4.1 1.6-.6L22.9 4.4c.2-.9-.6-1.7-1.4-1.4z"/>',
 };
 

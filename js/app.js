@@ -5,6 +5,7 @@ import {
   resolveConfig, saveConfig, initClient, state, dbApi, authApi, getSb, chatTitleFor, memberProfile,
 } from './api.js';
 import { qs, bus, toast, beep, getPrefs } from './utils.js';
+import { v20Boot } from './v20.js';
 import { v18Boot, v18Enter, v18Leave, onIncomingMessage, onIncomingReaction } from './v18.js';
 import { ensureMfa } from './extras.js';
 import { initAuth, showAuth, showApp, showSetup } from './auth.js';
@@ -38,6 +39,7 @@ async function boot() {
   // 0. Пользовательские настройки внешнего вида и звука
   applyPrefs();
   try { v18Boot(); } catch (e) { console.error('v18Boot:', e); }
+  try { v20Boot(); } catch (e) { console.error('v20Boot:', e); }
 
   // 1. Конфигурация Supabase
   const cfg = resolveConfig();

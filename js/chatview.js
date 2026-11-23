@@ -8,7 +8,9 @@ import { recordVoice, recordVideo, canRecordVoice, canRecordVideo, extOf } from 
 import { startCall, joinVoice, leaveVoice, inVoice, initCallsUI } from './calls.js';
 import { initStickers, stickerEmojiOf, stickerAnimOf } from './stickers.js';
 import { openProfile } from './profile.js';
-import { translationHTML, openTranslate, suggestReplies } from './ai.js';
+import { translationHTML, openTranslate, suggestReplies, openAssistant } from './ai.js';
+import { callCardHTML } from './callcard.js';
+import { recordCircle, canRecordCircle, circleHTML, isCircle, initCircles } from './circles.js';
 import { openGroupSettings } from './extras.js';
 import { presenceLabel, isShownOnline } from './api-v18.js';
 
@@ -360,6 +362,8 @@ function messageEl(m, chat, showDaySep) {
   if (showDaySep) {
     parts.push(`<div class="day-sep"><span>${esc(fmtDaySep(m.created_at))}</span></div>`);
   }
+  // v20: история звонков — карточка по центру ленты
+  if (m.attachment_type === 'call') return parts.join('') + callCardHTML(m, meId);
 
   let quote = '';
   if (m.reply_to) {
@@ -383,7 +387,9 @@ function messageEl(m, chat, showDaySep) {
   if (m.attachment_type === 'image' && m.attachment_url) {
     content += `<img class="msg-img" src="${esc(m.attachment_url)}" alt="Фото" loading="lazy">`;
   }
-  if (m.attachment_type === 'video' && m.attachment_url) {
+  if (isCircle(m) && m.attachment_url) {
+    content += circleHTML(m);
+  } else if (m.attachment_type === 'video' && m.attachment_url) {
     content += `<video class="msg-video" src="${esc(m.attachment_url)}" controls preload="metadata" playsinline></video>`;
   }
   if (m.attachment_type === 'voice' && m.attachment_url) {
@@ -648,6 +654,7 @@ function openMsgMenu(x, y, msgId) {
       <button data-act="copy">⧉ Копировать</button>
       <button data-act="forward">➦ Переслать…</button>
       <button data-act="fav">🔖 В избранное</button>
+      ${m.attachment_type === 'image' && m.attachment_url ? '<button data-act="aiphoto">✨ Спросить ИИ о фото</button>' : ''}
       ${m.body ? '<button data-act="translate">🌐 Перевести</button><button data-act="aireply">✨ Ответ от ИИ</button>' : ''}
       ${(mod || own) ? `<button data-act="pin">📌 ${pinned ? 'Открепить' : 'Закрепить'}</button>` : ''}
       ${own && !m.attachment_type ? '<button data-act="edit">✏️ Изменить</button>' : ''}
@@ -753,6 +760,7 @@ function doAction(act, msgId) {
   if (act === 'del') handleDelete(msgId);
   if (act === 'translate') openTranslate(m);
   if (act === 'aireply') suggestReplies(m);
+  if (act === 'aiphoto') openAssistant({ imageUrl: m.attachment_url });
   if (act === 'pin') togglePin(m);
 }
 
@@ -1333,11 +1341,11 @@ async function sendFiles(files) {
   }
 }
 
-async function sendRecorded(kind, { blob, durationMs }) {
+async function sendRecorded(kind, { blob, durationMs }, prefix = kind) {
   if (!state.activeChatId || sending) return;
   sending = true;
   try {
-    const file = new File([blob], `${kind}-${Date.now()}.${extOf(blob.type)}`, { type: blob.type });
+    const file = new File([blob], `${prefix}-${Date.now()}.${extOf(blob.type)}`, { type: blob.type });
     const attachment = await storeApi.uploadChatFile(state.activeChatId, file, { durationMs });
     attachment.attachment_type = kind;
     const m = await dbApi.sendMessage(state.activeChatId, { attachment, replyToId: replyState?.id });
@@ -1464,10 +1472,23 @@ export function initChatViewUI() {
     const res = await recordVoice();
     if (res) await sendRecorded('voice', res);
   });
+  // v20: кнопка камеры — видеокружок как в Telegram (обычное видео можно прикрепить скрепкой)
   qs('#video-btn').addEventListener('click', async () => {
     if (sending) return;
-    const res = await recordVideo();
-    if (res) await sendRecorded('video', res);
+    if (canRecordCircle()) {
+      const res = await recordCircle();
+      if (res) await sendRecorded('video', res, 'circle');
+    } else {
+      const res = await recordVideo();
+      if (res) await sendRecorded('video', res);
+    }
+  });
+  initCircles(qs('#messages'));
+  // v20: «перезвонить» из карточки звонка в чате
+  qs('#messages').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-recall]'); if (!b) return;
+    const chat = state.chats.get(state.activeChatId);
+    if (chat) startCall(chat, b.dataset.recall === 'video');
   });
 
   const fileInput = qs('#file-input');
@@ -1537,7 +1558,7 @@ export function initChatViewUI() {
   // двойной клик — быстрый ответ
   box.addEventListener('dblclick', (e) => {
     const row = e.target.closest('.msg-row');
-    if (row && !e.target.closest('a, button, img, video, .voice')) {
+    if (row && !e.target.closest('a, button, img, video, .voice, .vcircle, .call-card')) {
       doAction('reply', row.dataset.id);
     }
   });

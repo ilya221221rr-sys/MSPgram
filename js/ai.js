@@ -8,6 +8,7 @@ import { qs, esc, el, toast, getPrefs, setPrefs } from './utils.js';
 import { icon } from './icons.js';
 import { getLoadedMessages, refreshMessages } from './chatview.js';
 import { aiComplete } from './ai-core.js';
+import { imageToDataUrl, urlToFile, isImageFile } from './ai-vision.js';
 
 const SYSTEM = 'Ты — MSP AI, дружелюбный и толковый ассистент внутри мессенджера MSPgram. '
   + 'Отвечай по делу и кратко, на языке пользователя (по умолчанию — русский). Не выдумывай факты.';
@@ -51,23 +52,30 @@ function transcriptOf(chat, msgs) {
 // ---------- ассистент ----------
 const histKey = () => `msp_ai_${state.me?.id}`;
 function loadHist() { try { return JSON.parse(localStorage.getItem(histKey()) || '[]'); } catch { return []; } }
-function saveHist(h) { try { localStorage.setItem(histKey(), JSON.stringify(h.slice(-40))); } catch { /* */ } }
+function saveHist(h) { try { localStorage.setItem(histKey(), JSON.stringify(h.slice(-40).map((x) => ({ role: x.role, content: x.img ? `🖼 ${x.content}` : x.content })))); } catch { /* */ } }
 
-export function openAssistant() {
-  if (!state.me || qs('#ai-modal')) return;
+export function openAssistant(opts) {
+  if (!state.me) return;
+  const imageUrl = opts && typeof opts.imageUrl === 'string' ? opts.imageUrl : '';
+  const existing = qs('#ai-modal');
+  if (existing) { existing.__attachUrl?.(imageUrl); return; }
+  // история: в памяти у сообщений может лежать img (картинка текущей сессии), в localStorage — только текст
   let hist = loadHist();
   const m = el(`
     <div class="modal-overlay" id="ai-modal">
       <div class="modal ai-modal">
         <div class="ai-head">
           <span class="ai-logo">${icon('sparkles', 20)}</span>
-          <div class="ai-head-t"><b>MSP AI</b><span>ассистент MSPgram</span></div>
-          <button class="icon-btn" data-act="clear" title="Очистить диалог">${icon('x', 18)}</button>
+          <div class="ai-head-t"><b>MSP AI</b><span>ассистент · умеет смотреть фото</span></div>
+          <button class="icon-btn" data-act="clear" title="Очистить диалог">${icon('trash', 18)}</button>
         </div>
         <div class="ai-log" id="ai-log"></div>
         <div class="ai-chips" id="ai-chips"></div>
+        <div class="ai-attach hidden" id="ai-attach"></div>
         <div class="ai-input">
-          <textarea id="ai-text" rows="1" placeholder="Спроси что угодно…"></textarea>
+          <button class="icon-btn ai-photo-btn" id="ai-photo" title="Загрузить фото для ИИ">${icon('image', 20)}</button>
+          <input type="file" id="ai-file" accept="image/*" class="hidden">
+          <textarea id="ai-text" rows="1" placeholder="Спроси что угодно или загрузи фото…"></textarea>
           <button class="send-btn" id="ai-send" title="Отправить">${icon('send', 18)}</button>
         </div>
         <button class="btn ghost sm ai-close" data-act="close">Закрыть</button>
@@ -75,37 +83,122 @@ export function openAssistant() {
     </div>`);
   document.querySelector('#modal-root').appendChild(m);
   const log = qs('#ai-log', m); const input = qs('#ai-text', m);
-  const bubble = (role, text) => {
-    const b = el(`<div class="ai-msg ${role}"><div class="ai-bubble">${renderMd(text)}</div>
+  const strip = qs('#ai-attach', m); const fileIn = qs('#ai-file', m);
+  let pending = null; // { dataUrl, w, h, kb }
+
+  const bubble = (role, text, img) => {
+    const b = el(`<div class="ai-msg ${role}"><div class="ai-bubble">${img ? `<img class="ai-pic" src="${esc(img)}" alt="Фото">` : ''}${text ? renderMd(text) : ''}</div>
       ${role === 'assistant' ? '<button class="ai-copy" title="Копировать">⧉</button>' : ''}</div>`);
     b.querySelector('.ai-copy')?.addEventListener('click', () => navigator.clipboard?.writeText(text).then(() => toast('Скопировано ✓')));
     log.appendChild(b); log.scrollTop = log.scrollHeight; return b;
   };
-  if (!hist.length) bubble('assistant', 'Привет! Я MSP AI 👋 Помогу написать сообщение, объясню что-нибудь, переведу или придумаю идею. С чего начнём?');
-  hist.forEach((h) => bubble(h.role, h.content));
 
-  const chips = ['Помоги написать вежливое сообщение', 'Объясни простыми словами…', 'Придумай идею подарка', 'Переведи на английский: '];
-  qs('#ai-chips', m).innerHTML = chips.map((c) => `<button class="chip">${esc(c)}</button>`).join('');
+  // карточка «вставь ключ» — нужна один раз, чтобы ИИ видел картинки
+  const keyCard = (retry) => {
+    const b = el(`<div class="ai-msg assistant"><div class="ai-bubble ai-keycard">
+      <b>🔑 Нужен ключ для фото</b>
+      <p>Бесплатный ИИ без ключа картинки не понимает. Получи бесплатный ключ на <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">openrouter.ai/keys</a> (вход через Google/GitHub, карта не нужна) и вставь сюда — это один раз. Остальные функции ИИ в приложении не изменятся.</p>
+      <div class="ai-keyrow"><input type="password" placeholder="sk-or-v1-…" autocomplete="off"><button class="btn primary sm">Сохранить</button></div>
+    </div></div>`);
+    b.querySelector('button').addEventListener('click', () => {
+      const k = b.querySelector('input').value.trim();
+      if (!/^sk-/.test(k)) { toast('Ключ начинается с sk-or-v1-…'); return; }
+      setPrefs({ aiVisionKey: k });
+      b.remove(); toast('Ключ сохранён ✓');
+      retry();
+    });
+    log.appendChild(b); log.scrollTop = log.scrollHeight;
+  };
+
+  const renderStrip = () => {
+    if (!pending) { strip.classList.add('hidden'); strip.innerHTML = ''; return; }
+    strip.classList.remove('hidden');
+    strip.innerHTML = `<div class="ai-thumb"><img src="${esc(pending.dataUrl)}" alt=""><button title="Убрать фото" data-x>✕</button></div>
+      <div class="ai-thumb-info"><b>Фото готово</b><span>${pending.w}×${pending.h} · ${pending.kb} КБ</span></div>`;
+  };
+  strip.addEventListener('click', (e) => { if (e.target.closest('[data-x]')) { pending = null; renderStrip(); } });
+
+  const attachFile = async (file) => {
+    if (!file) return;
+    try {
+      strip.classList.remove('hidden'); strip.innerHTML = '<span class="ai-spin sm">Готовлю фото…</span>';
+      pending = await imageToDataUrl(file);
+      renderStrip(); input.focus();
+      if (!input.value.trim()) input.placeholder = 'Что узнать про фото? (можно оставить пустым)';
+    } catch (e) { pending = null; renderStrip(); toast('Ошибка: ' + e.message, 4000); }
+  };
+  m.__attachUrl = async (url) => {
+    if (!url) return;
+    try { await attachFile(await urlToFile(url)); } catch (e) { toast('Ошибка: ' + e.message, 4000); }
+  };
+
+  qs('#ai-photo', m).addEventListener('click', () => fileIn.click());
+  fileIn.addEventListener('change', () => { attachFile(fileIn.files[0]); fileIn.value = ''; });
+  input.addEventListener('paste', (e) => {
+    const f = [...(e.clipboardData?.files || [])].find(isImageFile);
+    if (f) { e.preventDefault(); attachFile(f); }
+  });
+  const dz = qs('.ai-modal', m);
+  ['dragenter', 'dragover'].forEach((ev) => dz.addEventListener(ev, (e) => { if ([...(e.dataTransfer?.types || [])].includes('Files')) { e.preventDefault(); dz.classList.add('drop'); } }));
+  ['dragleave', 'drop'].forEach((ev) => dz.addEventListener(ev, () => dz.classList.remove('drop')));
+  dz.addEventListener('drop', (e) => { const f = [...(e.dataTransfer?.files || [])].find(isImageFile); if (f) { e.preventDefault(); attachFile(f); } });
+
+  if (!hist.length) bubble('assistant', 'Привет! Я MSP AI 👋 Помогу написать сообщение, объясню что-нибудь, переведу или придумаю идею. А ещё могу **посмотреть фото**: нажми 🖼 слева от поля ввода — опишу, переведу текст с картинки или помогу с задачей.');
+  hist.forEach((h) => bubble(h.role, h.content, h.img));
+
+  const chips = [
+    ['📷 Опиши фото', 'Опиши подробно, что на этом фото.', true],
+    ['🔤 Текст с фото', 'Выпиши весь текст с фото и переведи на русский, если он на другом языке.', true],
+    ['🧮 Реши задачу', 'Реши задачу с фото и объясни решение по шагам.', true],
+    ['✍️ Вежливое сообщение', 'Помоги написать вежливое сообщение', false],
+    ['💡 Идея подарка', 'Придумай идею подарка', false],
+  ];
+  qs('#ai-chips', m).innerHTML = chips.map((c, i) => `<button class="chip" data-i="${i}">${esc(c[0])}</button>`).join('');
   qs('#ai-chips', m).addEventListener('click', (e) => {
     const c = e.target.closest('.chip'); if (!c) return;
-    input.value = c.textContent; input.focus();
+    const [, text, needPhoto] = chips[Number(c.dataset.i)];
+    input.value = text; input.focus();
+    if (needPhoto && !pending) fileIn.click();
   });
 
   let busy = false;
-  const send = async () => {
-    const text = input.value.trim();
-    if (!text || busy) return;
-    busy = true; input.value = '';
-    hist.push({ role: 'user', content: text }); bubble('user', text);
+  const toApi = (h, withImg) => (withImg && h.img
+    ? { role: h.role, content: [{ type: 'text', text: h.content || 'Опиши фото' }, { type: 'image_url', image_url: { url: h.img } }] }
+    : { role: h.role, content: h.content });
+
+  const ask = async () => {
+    // картинки шлём только из последних 3 реплик — экономим трафик и токены
+    const tail = hist.slice(-16);
+    const lastImgIdx = tail.map((h) => !!h.img);
+    const payload = tail.map((h, i) => toApi(h, lastImgIdx[i] && tail.length - i <= 3));
     const typing = bubble('assistant', '…'); typing.classList.add('typing');
     try {
-      const answer = await aiComplete([{ role: 'system', content: SYSTEM }, ...hist.slice(-16)]);
+      const answer = await aiComplete([{ role: 'system', content: SYSTEM }, ...payload]);
       typing.remove(); bubble('assistant', answer);
       hist.push({ role: 'assistant', content: answer }); saveHist(hist);
     } catch (e) {
-      typing.remove(); bubble('assistant', '⚠️ ' + e.message);
-      hist.pop(); saveHist(hist);
-    } finally { busy = false; input.focus(); }
+      typing.remove();
+      if (e.needKey) {
+        keyCard(() => { busy = true; ask().finally(() => { busy = false; }); });
+      } else {
+        bubble('assistant', '⚠️ ' + e.message);
+        const last = hist[hist.length - 1];
+        if (last && last.role === 'user') { hist.pop(); const b = [...log.querySelectorAll('.ai-msg.user')].pop(); b?.remove(); }
+        saveHist(hist);
+      }
+    }
+  };
+
+  const send = async () => {
+    const text = input.value.trim();
+    if ((!text && !pending) || busy) return;
+    busy = true; input.value = ''; input.style.height = 'auto'; input.placeholder = 'Спроси что угодно или загрузи фото…';
+    const img = pending ? pending.dataUrl : '';
+    const content = text || (img ? 'Опиши, что на фото.' : '');
+    pending = null; renderStrip();
+    hist.push(img ? { role: 'user', content, img } : { role: 'user', content });
+    bubble('user', text, img);
+    try { await ask(); } finally { busy = false; input.focus(); }
   };
   qs('#ai-send', m).addEventListener('click', send);
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
@@ -115,6 +208,7 @@ export function openAssistant() {
     if (e.target.closest('[data-act=clear]')) { hist = []; saveHist(hist); log.innerHTML = ''; bubble('assistant', 'Диалог очищен. О чём поговорим?'); }
   });
   setTimeout(() => input.focus(), 50);
+  if (imageUrl) m.__attachUrl(imageUrl);
 }
 
 // ---------- пересказ переписки ----------

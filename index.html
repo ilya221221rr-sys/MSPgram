@@ -16,6 +16,7 @@
 <link rel="stylesheet" href="css/style.css">
 <link rel="stylesheet" href="css/v18.css">
 <link rel="stylesheet" href="css/v19.css">
+<link rel="stylesheet" href="css/v20.css">
 </head>
 <body>
 
@@ -115,7 +116,7 @@
   <aside class="sidebar">
     <header class="sidebar-head">
       <button id="profile-btn" class="avatar-btn" title="Профиль и настройки"></button>
-      <div class="sidebar-title">MSPgram <span id="app-version">v19</span></div>
+      <div class="sidebar-title">MSPgram <span id="app-version">v20</span></div>
       <button id="notif-btn" class="icon-btn has-badge" title="Уведомления"><span data-ic="bell"></span><span id="notif-badge" class="nbadge hidden"></span></button>
       <button id="new-group-btn" class="icon-btn" title="Новый сервер или группа"><span data-ic="plus"></span></button>
     </header>
@@ -126,12 +127,12 @@
     <div id="list-filters" class="list-filters"></div>
     <div id="search-results" class="chat-list hidden"></div>
     <nav id="chat-list" class="chat-list"></nav>
-    <nav class="side-nav">
-      <button id="nav-chats" class="nav-btn active" title="Чаты"><span data-ic="chat"></span><em>Чаты</em></button>
-      <button id="nav-friends" class="nav-btn has-badge" title="Друзья"><span data-ic="users"></span><em>Друзья</em><i id="friends-badge" class="nbadge hidden"></i></button>
-      <button id="nav-ai" class="nav-btn" title="ИИ-ассистент"><span data-ic="sparkles"></span><em>MSP AI</em></button>
-      <button id="saved-btn" class="nav-btn" title="Избранное — личные заметки"><span data-ic="bookmark"></span><em>Избранное</em></button>
-      <button id="settings-btn" class="nav-btn" title="Настройки"><span data-ic="settings"></span><em>Настройки</em></button>
+    <nav class="side-nav dock" id="dock">
+      <button id="nav-chats" class="nav-btn active" title="Чаты"><span class="nav-ic" data-ic="chat"></span><em>Чаты</em></button>
+      <button id="nav-friends" class="nav-btn has-badge" title="Друзья"><span class="nav-ic" data-ic="users"></span><em>Друзья</em><i id="friends-badge" class="nbadge hidden"></i></button>
+      <button id="nav-ai" class="nav-btn nav-ai" title="ИИ-ассистент — умеет смотреть фото"><span class="nav-ic" data-ic="sparkles"></span><em>MSP AI</em></button>
+      <button id="saved-btn" class="nav-btn" title="Избранное — личные заметки"><span class="nav-ic" data-ic="bookmark"></span><em>Избранное</em></button>
+      <button id="settings-btn" class="nav-btn nav-me" title="Профиль и настройки"><span class="nav-ic" id="dock-avatar"></span><em>Профиль</em></button>
     </nav>
   </aside>
 
@@ -175,7 +176,7 @@
           <div id="gif-panel" class="sticker-panel gif-panel hidden"></div>
           <button id="ai-write-btn" class="icon-btn ai-btn" title="ИИ поможет с текстом"><span data-ic="wand"></span></button>
           <button id="mic-btn" class="icon-btn" title="Голосовое сообщение"><span data-ic="mic"></span></button>
-          <button id="video-btn" class="icon-btn" title="Видеосообщение (60 сек)"><span data-ic="video"></span></button>
+          <button id="video-btn" class="icon-btn" title="Видеокружок (до 60 сек)"><span data-ic="video"></span></button>
           <textarea id="msg-input" rows="1" placeholder="Сообщение…"></textarea>
           <button id="send-btn" class="send-btn" title="Отправить"><span data-ic="send" data-ic-size="19"></span></button>
         </div>

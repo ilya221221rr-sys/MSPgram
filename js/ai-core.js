@@ -130,7 +130,10 @@ const mergeSystem = (msgs) => {
   const sys = msgs.filter((m) => m.role === 'system').map((m) => m.content).join('\n');
   const rest = msgs.filter((m) => m.role !== 'system').map((m) => ({ ...m }));
   const i = rest.findIndex((m) => m.role === 'user');
-  if (sys && i >= 0) rest[i].content = `${sys}\n\n${rest[i].content}`;
+  if (sys && i >= 0) {
+    if (Array.isArray(rest[i].content)) rest[i].content = [{ type: 'text', text: sys }, ...rest[i].content];
+    else rest[i].content = `${sys}\n\n${rest[i].content}`;
+  }
   return rest;
 };
 
@@ -199,8 +202,51 @@ function parseMsg(raw) {
   } catch { return String(raw).slice(0, 160); }
 }
 
+// ---------- модели с поддержкой картинок (v20) ----------
+const VIS_STATIC = [
+  'openrouter/free',
+  'google/gemma-4-31b-it:free',
+  'google/gemma-4-26b-a4b-it:free',
+  'nvidia/nemotron-3.5-super-vl:free',
+];
+const VIS_LIST_KEY = 'msp_or_vision_list';
+const VIS_OK_KEY = 'msp_ai_ok_vision';
+
+export async function liveVisionModels() {
+  try {
+    const c = JSON.parse(localStorage.getItem(VIS_LIST_KEY) || 'null');
+    if (c && Date.now() - c.t < 6 * 3600e3 && c.list?.length) return c.list;
+  } catch { /* */ }
+  try {
+    const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 7000);
+    const res = await fetch(OR_MODELS_URL, { signal: ctrl.signal }); clearTimeout(t);
+    if (!res.ok) throw new Error(String(res.status));
+    const j = await res.json();
+    const list = (j.data || [])
+      .filter((x) => /:free$/.test(x.id) && (x.architecture?.input_modalities || []).includes('image')
+        && (x.architecture?.output_modalities || ['text']).includes('text'))
+      .sort((a, b) => (b.created || 0) - (a.created || 0))
+      .map((x) => x.id);
+    if (list.length) { localStorage.setItem(VIS_LIST_KEY, JSON.stringify({ t: Date.now(), list })); return list; }
+  } catch { /* запасной список */ }
+  return VIS_STATIC.filter((x) => x !== 'openrouter/free');
+}
+
+/** Настройки для запроса с картинкой. Анонимный Pollinations картинки не понимает —
+ *  поэтому берём OpenRouter (бесплатный ключ) или собственный провайдер пользователя. */
+export function visionSetup() {
+  const p = getPrefs();
+  const n = normalizeAiUrl(p.aiUrl);
+  const orKey = (p.aiVisionKey || (n.provider === 'openrouter' ? p.aiKey : '') || '').trim();
+  if (n.provider === 'custom') return { ok: true, url: n.url, key: (p.aiKey || '').trim(), provider: 'custom', models: [(p.aiModel || '').trim() || 'gpt-4o-mini'], note: n.note };
+  if (!orKey) return { ok: false };
+  return { ok: true, url: OR_URL, key: orKey, provider: 'openrouter', models: null, note: '' };
+}
+
 // ---------- публичный вызов (используется всем приложением) ----------
 export async function aiComplete(messages, { temperature = 0.6, timeoutMs = 40000 } = {}) {
+  const hasImage = messages.some((m) => Array.isArray(m.content) && m.content.some((x) => x.type === 'image_url'));
+  if (hasImage) return aiCompleteVision(messages, { temperature, timeoutMs: Math.max(timeoutMs, 70000) });
   const p = getPrefs();
   const n = normalizeAiUrl(p.aiUrl);
   const key = (p.aiKey || '').trim();
@@ -214,6 +260,34 @@ export async function aiComplete(messages, { temperature = 0.6, timeoutMs = 4000
       return r.text;
     } catch (e) {
       lastErr = e;
+      if (!e.retryable) break;
+    }
+  }
+  throw lastErr || new Error('ИИ недоступен');
+}
+
+async function aiCompleteVision(messages, { temperature, timeoutMs }) {
+  const v = visionSetup();
+  if (!v.ok) {
+    const err = new Error('Для анализа фото нужен ИИ с поддержкой картинок. Вставь бесплатный ключ OpenRouter — это один раз.');
+    err.needKey = true;
+    throw err;
+  }
+  let models = v.models;
+  if (!models) {
+    const okModel = localStorage.getItem(VIS_OK_KEY) || '';
+    const live = await liveVisionModels();
+    models = [...new Set([okModel, 'openrouter/free', ...live].filter(Boolean))].slice(0, 4);
+  }
+  let lastErr;
+  for (let i = 0; i < models.length; i++) {
+    try {
+      const r = await callOnce({ url: v.url, key: v.key, model: models[i], messages, temperature, timeoutMs, provider: v.provider, attempt: i + 1, urlNote: v.note });
+      if (v.provider === 'openrouter') localStorage.setItem(VIS_OK_KEY, models[i]);
+      return r.text;
+    } catch (e) {
+      lastErr = e;
+      if (e.status === 401 || e.status === 403) { e.needKey = true; break; }
       if (!e.retryable) break;
     }
   }

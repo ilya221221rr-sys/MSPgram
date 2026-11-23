@@ -296,7 +296,7 @@ async function renderSystem(body) {
     <div class="sys-grid">${res.map((r) => `<div class="sys-cell ${r.ok ? 'ok' : 'bad'}"><span>${r.ok ? '✓' : '✕'}</span><b>${r.t}</b><em>${r.ok ? (r.count ?? 0) : 'нет'}</em></div>`).join('')}</div>
     <div class="settings-sec">Окружение</div>
     <div class="diag-card">
-      <div class="diag-row"><span>Версия приложения</span><b>${esc(window.MSP_VERSION || 'v19')}</b></div>
+      <div class="diag-row"><span>Версия приложения</span><b>${esc(window.MSP_VERSION || 'v20')}</b></div>
       <div class="diag-row"><span>Realtime-каналов</span><b>${sb.getChannels?.().length ?? '—'}</b></div>
       <div class="diag-row"><span>Хранилища</span><b>${esc(buckets)}</b></div>
       <div class="diag-row"><span>Кэш приложения</span><b class="mono small">${esc(swv)}</b></div>
