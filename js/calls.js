@@ -142,7 +142,12 @@ export async function startCall(chat, withVideo) {
     if (!call || payload.callId !== call.id) return;
     cleanupCall();
     toast('Звонок завершён');
-  }).subscribe();
+  }).subscribe((status) => {
+    if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+      toast('Ошибка связи при звонке — проверь интернет');
+      cleanupCall();
+    }
+  });
 
   // звоним (сигнал собеседнику)
   const ringChan = sb.channel(`ring-${other.id}`);
@@ -280,7 +285,12 @@ function subscribeRing() {
   }).on('broadcast', { event: 'call-cancel' }, ({ payload }) => {
     const ov = qs('#ring-overlay');
     if (ov && payload && ov.dataset.callid === payload.callId) ov.remove();
-  }).subscribe();
+  }).subscribe((status) => {
+    // если канал входящих умер — через 2 сек пересоздаём (иначе звонки не доходят)
+    if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+      setTimeout(() => { stopCalls(); if (state.me && state.me.id) subscribeRing(); }, 2000);
+    }
+  });
 }
 
 function showIncomingRing(p) {
