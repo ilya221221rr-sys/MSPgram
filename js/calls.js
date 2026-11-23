@@ -233,7 +233,28 @@ async function makePeer(c, isCaller) {
 }
 
 // ---------- обработка входящих (подписка один раз) ----------
+let ringSubscribed = false;
+
 export function initCallsUI() {
+  // безопасно вызывать когда угодно: подпишемся, как только появится профиль
+  if (state.me && state.me.id) subscribeRing();
+}
+
+export function ensureCallsReady() {
+  if (state.me && state.me.id && !ringSubscribed) subscribeRing();
+}
+
+export function stopCalls() {
+  if (ringChan) {
+    getSb().removeChannel(ringChan).catch(() => {});
+    ringChan = null;
+  }
+  ringSubscribed = false;
+}
+
+function subscribeRing() {
+  if (ringSubscribed) return;
+  ringSubscribed = true;
   const sb = getSb();
   ringChan = sb.channel(`ring-${state.me.id}`);
   ringChan.on('broadcast', { event: 'ring' }, ({ payload }) => {

@@ -13,7 +13,7 @@ import {
   onPresenceChanged, initLightboxUI,
 } from './chatview.js';
 import { applyPrefs } from './settings.js';
-import { initCallsUI } from './calls.js';
+import { initCallsUI, ensureCallsReady, stopCalls } from './calls.js';
 import { startPresence, stopPresence } from './presence.js';
 
 let realtimeChan = null;
@@ -52,12 +52,17 @@ async function boot() {
   }
 
   // 2. Экраны и глобальные события
-  initAuth();
-  initChatListUI();
-  initChatViewUI();
-  initLightboxUI();
+  // Каждый блок в своей защите: одна ошибка не должна ронять весь запуск
+  const safe = (name, fn) => {
+    try { fn(); } catch (e) { console.error(`init ${name}:`, e); toast(`Модуль ${name} не запустился: ` + e.message); }
+  };
+  safe('auth', initAuth);
+  safe('chatlist', initChatListUI);
+  safe('chatview', initChatViewUI);
+  safe('lightbox', initLightboxUI);
+  safe('calls', initCallsUI);
+  safe('stickers', () => {}); // инициализируется внутри chatview
   wireBusEvents();
-  initCallsUI();
 
   // при изменении профиля — перерисовать чаты (имена и аватарки)
   bus.on('profile-synced', () => import('./chatlist.js').then((m) => {
@@ -167,6 +172,7 @@ async function doEnter(session) {
     return;
   }
   renderSidebarMe();
+  ensureCallsReady(); // входящие звонки: профиль готов — подписываемся
 
   // чаты + непрочитанные
   try {
@@ -200,6 +206,7 @@ async function doEnter(session) {
 
 async function leaveApp() {
   enterPromise = null;
+  stopCalls();
   state.me = null;
   state.chats.clear();
   state.unread.clear();
