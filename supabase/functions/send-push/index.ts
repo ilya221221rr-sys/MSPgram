@@ -5,6 +5,7 @@
 //   1) Триггер БД на таблице messages (заголовок x-webhook-secret) → push о новом сообщении
 //   2) Приложение при исходящем звонке (JWT пользователя)          → push «звонит…»
 //   3) Приложение из Настроек (JWT пользователя)                   → тестовый push себе
+//  v23: {type:'diag'} — проверка настроек (для окна «Диагностика push»)
 //  Плюс {type:'vapid'} — отдаёт публичный VAPID-ключ (приложению не нужно его вписывать).
 //
 //  Секреты (Edge Functions → Secrets):
@@ -190,6 +191,24 @@ Deno.serve(async (req) => {
   try {
     // публичный ключ — не секрет
     if (type === 'vapid') return json({ publicKey: VAPID_PUBLIC, ready: vapidReady });
+
+    // v23: диагностика для окна «Диагностика push» (нужен вход в аккаунт)
+    if (type === 'diag') {
+      const u = await userFromRequest(req);
+      if (!u) return json({ error: 'unauthorized' }, 401);
+      const { data: st } = await admin.from('push_settings').select('key, value');
+      const cfg: Record<string, string> = Object.fromEntries((st || []).map((r) => [r.key as string, r.value as string]));
+      const { count } = await admin.from('push_subscriptions').select('*', { count: 'exact', head: true }).eq('user_id', u.id);
+      return json({
+        vapid: vapidReady,
+        secretSet: !!WEBHOOK_SECRET,
+        urlSet: !!cfg.function_url,
+        dbSecretSet: !!cfg.webhook_secret,
+        secretMatches: safeEqual(cfg.webhook_secret || '', WEBHOOK_SECRET),
+        urlLooksOk: (cfg.function_url || '').includes('/functions/v1/send-push'),
+        myDevices: count || 0,
+      });
+    }
 
     if (!vapidReady) return json({ error: 'VAPID-ключи не настроены в секретах функции' }, 500);
 

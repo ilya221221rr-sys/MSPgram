@@ -9,6 +9,7 @@ import {
 import { previewRingtone } from './ringtone.js';
 import { showSystemNotification } from './push.js';
 import { getPushState, subscribePush, sendTestPush } from './webpush.js';
+import { openPushDiag } from './v23.js';
 
 const ACCENTS = {
   ocean: { label: 'Океан', a: '#5b8cff', b: '#7c5bff', out: 'linear-gradient(135deg,#3e63dd,#4d43d8)' },
@@ -103,6 +104,13 @@ export function openSettingsModal() {
             <div class="settings-row-sub" id="st-push-sub"></div>
           </div>
           <button class="btn ghost sm" id="st-push-btn">Включить</button>
+        </div>
+        <div class="settings-row">
+          <div>
+            <div class="settings-row-title">Диагностика push</div>
+            <div class="settings-row-sub">Если сообщения не приходят при закрытом приложении — тут видно, что именно сломано</div>
+          </div>
+          <button class="btn ghost sm" id="st-push-diag" type="button">Проверить</button>
         </div>
 
         <div class="settings-sec">Внешний вид</div>
@@ -261,6 +269,7 @@ export function openSettingsModal() {
     }
   };
   renderPush();
+  qs('#st-push-diag', m).addEventListener('click', () => openPushDiag());
   pushBtn.addEventListener('click', async () => {
     pushBtn.disabled = true;
     try {

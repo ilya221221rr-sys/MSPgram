@@ -1,7 +1,7 @@
 // Service Worker: офлайн-кэш интерфейса (PWA)
 // Стратегия: сеть — всегда первая (свежий код гарантированно),
 // кэш используется только когда интернета нет.
-const VERSION = 'mspgram-v22';
+const VERSION = 'mspgram-v23';
 const PRECACHE = [
   './',
   './index.html',
@@ -11,6 +11,7 @@ const PRECACHE = [
   './css/v20.css',
   './css/v21.css',
   './css/v22.css',
+  './css/v23.css',
   './js/config.js',
   './js/vendor/supabase.js',
   './manifest.webmanifest',
@@ -98,7 +99,7 @@ self.addEventListener('push', (event) => {
       icon: 'icons/icon-192.png',
       badge: 'icons/icon-192.png',
       tag,
-      renotify: !!(tag && isCall),
+      renotify: !!tag,            // v23: каждое новое сообщение в чате снова звенит/вибрирует, а не подменяет старое молча
       requireInteraction: isCall,
       vibrate: isCall ? [600, 300, 600, 300, 600] : [200, 100, 200],
       data: { chatId: d.chatId || null, callId: d.callId || null, kind: d.kind || 'message', url: './' },

@@ -6,6 +6,7 @@
 import { getSb, state, dbApi } from './api.js';
 import { qs, esc, el, toast, avatarHTML, relLastSeen, confirmDialog } from './utils.js';
 import { renderAiDiag } from './ai-diag.js';
+import { openRenameDialog } from './v23.js';
 
 export const EXTRA_TABS = [
   ['ai', '🩺 ИИ', false],
@@ -80,6 +81,7 @@ async function openUserCard(p, isAdm, reload) {
     <div class="chat-flag-row" style="flex-wrap:wrap;gap:8px">
       <button class="btn ghost sm" data-a="note">💾 Сохранить заметку</button>
       <button class="btn ghost sm" data-a="copy">⧉ Копировать ID</button>
+      ${isAdm ? '<button class="btn ghost sm" data-a="rename">✏️ Имя и юзернейм</button>' : ''}
       ${isAdm ? '<button class="btn ghost sm" data-a="wipe">🧹 Удалить все его сообщения</button>' : ''}
       <button class="btn ${isBannedNow(p) ? 'primary' : 'danger'} sm" data-a="ban">${isBannedNow(p) ? '✅ Разбанить' : '🚫 Забанить'}</button>
     </div>
@@ -99,6 +101,7 @@ async function openUserCard(p, isAdm, reload) {
     try {
       if (b.dataset.a === 'close') m.remove();
       if (b.dataset.a === 'copy') navigator.clipboard?.writeText(p.id).then(() => toast('ID скопирован ✓'));
+      if (b.dataset.a === 'rename') openRenameDialog(p, (patch) => { audit('rename', `@${p.nickname}`, patch); m.remove(); reload(); });
       if (b.dataset.a === 'note') { const { error: ne } = await sb.from('admin_notes').upsert({ user_id: p.id, note: qs('#uc-note', m).value.trim(), updated_by: state.me.id, updated_at: new Date().toISOString() });
         if (ne) throw ne;
         audit('note', `@${p.nickname}`); toast('Заметка сохранена ✓'); }
@@ -183,11 +186,7 @@ export async function renderUsersTab(body, { isAdm }) {
             audit('role', `@${p.nickname}`, { role: n }); toast('Роль обновлена ✓'); renderUsersTab(body, { isAdm });
           }
           if (b.dataset.a === 'rename') {
-            const nn = window.prompt('Новое имя:', p.display_name || ''); if (nn === null) return;
-            const nk = window.prompt('Новый юзернейм (латиница, без @):', p.nickname || ''); if (nk === null) return;
-            const patch = {}; if (nn.trim()) patch.display_name = nn.trim(); if (nk.trim()) patch.nickname = nk.trim().toLowerCase().replace(/[^a-z0-9_]/g, '');
-            if (!Object.keys(patch).length) return;
-            await dbApi.adminUpdateProfile(p.id, patch); audit('rename', `@${p.nickname}`, patch); toast('Профиль обновлён ✓'); renderUsersTab(body, { isAdm });
+            openRenameDialog(p, (patch) => { audit('rename', `@${p.nickname}`, patch); renderUsersTab(body, { isAdm }); });
           }
         } catch (err) { toast('Ошибка: ' + err.message, 4500); }
       });
