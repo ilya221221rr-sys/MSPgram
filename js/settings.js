@@ -8,6 +8,7 @@ import {
 } from './utils.js';
 import { previewRingtone } from './ringtone.js';
 import { showSystemNotification } from './push.js';
+import { getPushState, subscribePush, sendTestPush } from './webpush.js';
 
 const ACCENTS = {
   ocean: { label: 'Океан', a: '#5b8cff', b: '#7c5bff', out: 'linear-gradient(135deg,#3e63dd,#4d43d8)' },
@@ -237,34 +238,52 @@ export function openSettingsModal() {
 
   const pushBtn = qs('#st-push-btn', m);
   const pushSub = qs('#st-push-sub', m);
-  const renderPush = () => {
-    if (!('Notification' in window)) {
+  const renderPush = async () => {
+    const st = await getPushState();
+    pushBtn.disabled = false;
+    pushBtn.classList.remove('hidden');
+    if (st === 'unsupported') {
       pushSub.textContent = 'Браузер не поддерживает уведомления';
       pushBtn.classList.add('hidden');
-      return;
-    }
-    if (Notification.permission === 'granted') {
-      pushSub.textContent = 'Включены ✓ Отключать — в настройках браузера';
-      pushBtn.textContent = 'Готово';
-      pushBtn.disabled = true;
-    } else if (Notification.permission === 'denied') {
-      pushSub.textContent = 'Заблокированы — разреши их в настройках сайта в браузере';
+    } else if (st === 'denied') {
+      pushSub.textContent = 'Заблокированы — разреши их в настройках сайта/приложения';
       pushBtn.textContent = 'Недоступно';
       pushBtn.disabled = true;
+    } else if (st === 'on') {
+      pushSub.textContent = 'Включены ✓ Сообщения и звонки приходят, даже когда приложение закрыто';
+      pushBtn.textContent = 'Проверить';
+    } else if (st === 'off') {
+      pushSub.textContent = 'Разрешены, но это устройство не подключено к серверу push — нажми «Подключить»';
+      pushBtn.textContent = 'Подключить';
     } else {
-      pushSub.textContent = 'Разреши — и сообщения будут всплывать даже вне вкладки';
+      pushSub.textContent = 'Разреши — и сообщения будут приходить даже при закрытом приложении';
       pushBtn.textContent = 'Включить';
-      pushBtn.disabled = false;
     }
   };
   renderPush();
   pushBtn.addEventListener('click', async () => {
-    const res = await Notification.requestPermission();
-    renderPush();
-    if (res === 'granted') {
-      toast('Уведомления включены 🔔');
-      showSystemNotification({ title: 'MSPgram', body: 'Уведомления работают ✓', tag: 'msp-test' });
+    pushBtn.disabled = true;
+    try {
+      const st = await getPushState();
+      if (st === 'on') {
+        await sendTestPush();
+        toast('Тестовый push отправлен — он придёт с сервера 🔔');
+      } else {
+        const sub = await subscribePush();
+        if (!sub) { toast('Разрешение не выдано'); }
+        else {
+          toast('Push подключён 🔔');
+          await sendTestPush().catch(() => {});
+        }
+      }
+    } catch (e) {
+      toast('Push: ' + e.message, 6000);
+      // хотя бы локальные уведомления (когда приложение открыто)
+      if ('Notification' in window && Notification.permission === 'granted') {
+        showSystemNotification({ title: 'MSPgram', body: 'Локальные уведомления работают ✓', tag: 'msp-test' });
+      }
     }
+    renderPush();
   });
 
   // ---------- внешний вид ----------

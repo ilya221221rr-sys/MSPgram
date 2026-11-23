@@ -1,0 +1,21 @@
+/* ============================================================
+   MSPgram v22
+   • кнопка скрытия левой панели серверов
+   • скрытая панель не занимает место
+   ============================================================ */
+.server-rail { transition: width .18s ease, opacity .18s ease; }
+body.rail-hidden .server-rail { display: none; }
+
+#rail-toggle { flex: none; position: relative; }
+#rail-toggle.is-off { color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, transparent); }
+#rail-toggle .rail-dot {
+  position: absolute; top: 4px; right: 4px;
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--danger, #ff4d6a); border: 2px solid var(--panel, #0d1220);
+}
+#rail-toggle .rail-dot.hidden { display: none; }
+
+@media (max-width: 900px) {
+  #rail-toggle { width: 36px; height: 36px; }
+  .sidebar-head { gap: 4px; padding-left: 8px; }
+}

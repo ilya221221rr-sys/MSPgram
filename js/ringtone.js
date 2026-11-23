@@ -5,7 +5,7 @@
 //  Звук генерируется в коде (WAV в памяти), файлов не нужно.
 //  Играет через <audio loop> — это работает и при свёрнутом приложении.
 // ============================================================
-import { getPrefs } from './utils.js';
+import { getPrefs, ensureAudio } from './utils.js';
 import { showSystemNotification, closeSystemNotification } from './push.js';
 
 const RATE = 22050;
@@ -67,21 +67,28 @@ function getUrl(kind) {
   return urls[kind];
 }
 
-/** Разблокировка звука первым касанием (требование браузеров/iOS) */
+/** Разблокировка звука первым касанием (требование браузеров/iOS).
+ *  Chrome на Android не считает touchstart/pointerdown «жестом» — слушаем pointerup/touchend/click
+ *  и снимаем слушатели только после успешного разблокирования. */
+const UNLOCK_EVENTS = ['pointerup', 'touchend', 'keydown', 'click'];
+function removeUnlockListeners() {
+  UNLOCK_EVENTS.forEach((ev) => window.removeEventListener(ev, unlock, true));
+}
 function unlock() {
   if (unlocked) return;
   unlocked = true;
+  ensureAudio();
   ['in', 'out'].forEach((k) => {
     try {
       const a = new Audio(getUrl(k));
       a.muted = true;
       const p = a.play();
-      if (p && p.then) p.then(() => { a.pause(); }).catch(() => { unlocked = false; });
+      if (p && p.then) p.then(() => { a.pause(); removeUnlockListeners(); }).catch(() => { unlocked = false; });
     } catch { /* */ }
   });
 }
-['pointerdown', 'touchend', 'keydown', 'click'].forEach((ev) => {
-  window.addEventListener(ev, unlock, { once: true, passive: true, capture: true });
+UNLOCK_EVENTS.forEach((ev) => {
+  window.addEventListener(ev, unlock, { passive: true, capture: true });
 });
 
 function vibrate(on) {

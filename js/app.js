@@ -7,6 +7,8 @@ import {
 import { qs, bus, toast, beep, getPrefs } from './utils.js';
 import { v20Boot } from './v20.js';
 import { v21Boot } from './v21.js';
+import { v22Boot, takePendingChat } from './v22.js';
+import { syncPushSilently } from './webpush.js';
 import { showSystemNotification, askNotifyPermissionOnTap } from './push.js';
 import { v18Boot, v18Enter, v18Leave, onIncomingMessage, onIncomingReaction } from './v18.js';
 import { ensureMfa } from './extras.js';
@@ -43,6 +45,7 @@ async function boot() {
   try { v18Boot(); } catch (e) { console.error('v18Boot:', e); }
   try { v20Boot(); } catch (e) { console.error('v20Boot:', e); }
   try { v21Boot((id) => openChat(id)); } catch (e) { console.error('v21Boot:', e); }
+  try { v22Boot(); } catch (e) { console.error('v22Boot:', e); }
 
   // 1. Конфигурация Supabase
   const cfg = resolveConfig();
@@ -221,6 +224,7 @@ async function doEnter(session) {
   try { startPresence(); } catch (e) { console.warn('presence:', e); }
   startRealtime();
   requestNotificationsOnFirstClick();
+  syncPushSilently(); // v22: обновить подписку на настоящий Web Push
   v18Enter().catch((e) => console.warn('v18Enter:', e));
 
   // вступление по ссылке-приглашению после входа
@@ -238,6 +242,10 @@ async function doEnter(session) {
       toast('Не удалось вступить: ' + e.message, 5000);
     }
   }
+
+  // v22: приложение открыли тапом по push-уведомлению — сразу показываем нужный чат
+  const pendingChat = takePendingChat();
+  if (pendingChat && state.chats.has(pendingChat)) bus.emit('open-chat', pendingChat);
 
   // профиль по ссылке/QR (?add=<id>)
   const addId = new URLSearchParams(location.search).get('add');

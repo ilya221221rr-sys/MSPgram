@@ -15,6 +15,7 @@ import { el, qs, toast, avatarHTML, esc, fmtDuration } from './utils.js';
 import { icon } from './icons.js';
 import { callBody } from './callcard.js';
 import { startRingtone, stopRingtone } from './ringtone.js';
+import { pushCall } from './webpush.js';
 
 const ICE = {
   iceServers: [
@@ -506,6 +507,8 @@ export async function startCall(chat, withVideo) {
   await sendRingEvent(other.id, 'ring', {
     callId, video: withVideo, from: myName, avatar: state.me.avatar_url || '', chatId: chat.id,
   });
+  // v22: настоящий push — разбудит телефон собеседника, даже если приложение закрыто
+  pushCall({ chatId: chat.id, callId, video: withVideo });
 
   // таймаут: 40 сек без ответа
   c.ringTimeout = setTimeout(() => {

@@ -59,7 +59,9 @@ export function askNotifyPermissionOnTap() {
     window.removeEventListener('pointerup', ask, true);
     window.removeEventListener('touchend', ask, true);
     window.removeEventListener('click', ask, true);
-    Notification.requestPermission().catch(() => {});
+    Notification.requestPermission()
+      .then((res) => { if (res === 'granted') import('./webpush.js').then((m) => m.syncPushSilently()).catch(() => {}); })
+      .catch(() => {});
   };
   window.addEventListener('pointerup', ask, true);
   window.addEventListener('touchend', ask, true);
@@ -72,5 +74,6 @@ export function listenNotificationClicks(openChat) {
   navigator.serviceWorker.addEventListener('message', (e) => {
     const d = e.data || {};
     if (d.type === 'open-chat' && d.chatId) openChat(d.chatId);
+    if (d.type === 'push-resubscribe') import('./webpush.js').then((m) => m.syncPushSilently()).catch(() => {});
   });
 }

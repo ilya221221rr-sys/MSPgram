@@ -82,6 +82,7 @@ export const authApi = {
   },
   async signOut() {
     try { await dbApi.endSession?.(); } catch { /* сессия уже закрыта */ }
+    try { await (await import('./webpush.js')).unregisterPush(); } catch { /* push необязателен */ }
     await _sb.auth.signOut();
     _sb.removeAllChannels();
   },
