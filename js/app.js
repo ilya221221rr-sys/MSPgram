@@ -108,6 +108,11 @@ async function boot() {
       try { localStorage.removeItem('msp_session_backup'); } catch { /* */ }
       await leaveApp();
     }
+    // токен обновился (примерно раз в час) — realtime должен переподключиться
+    // на свежем токене, иначе канал умирает молча и лайв-сообщения пропадают
+    if (event === 'TOKEN_REFRESHED' && state.me && realtimeChan) {
+      scheduleRejoin();
+    }
   });
 
   // ошибка в ссылке из письма (просрочена или уже использована)
@@ -224,48 +229,92 @@ async function leaveApp() {
 function startRealtime() {
   if (realtimeChan) return;
   const sb = getSb();
+  // защита: ошибка в одном обработчике не должна ронять весь поток событий
+  const rt = (fn) => (...args) => {
+    try { const r = fn(...args); if (r && typeof r.catch === 'function') r.catch((e) => console.error('[rt]', e)); } catch (e) { console.error('[rt]', e); }
+  };
   realtimeChan = sb.channel('msp-db')
-    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => onDbMessage(payload.new))
-    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages' }, (payload) => {
-      if (payload.new) {
-        bus.emit('message:updated', payload.new);
-        onMessageUpdated(payload.new);
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, rt((p) => onDbMessage(p.new)))
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages' }, rt((p) => {
+      if (p.new) {
+        bus.emit('message:updated', p.new);
+        onMessageUpdated(p.new);
       }
-    })
-    .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'messages' }, (payload) => {
-      if (payload.old && payload.old.id) {
-        bus.emit('message:deleted', payload.old.id);
-        onMessageDeleted(payload.old.id);
+    }))
+    .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'messages' }, rt((p) => {
+      if (p.old && p.old.id) {
+        bus.emit('message:deleted', p.old.id);
+        onMessageDeleted(p.old.id);
       }
-    })
-    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'reactions' }, (payload) => onReactionChange(payload, false))
-    .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'reactions' }, (payload) => onReactionChange(payload, true))
-    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'chats' }, (payload) => {
-      if (payload.new) {
-        onChatUpdated(payload.new);
+    }))
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'reactions' }, rt((p) => onReactionChange(p, false)))
+    .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'reactions' }, rt((p) => onReactionChange(p, true)))
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'chats' }, rt((p) => {
+      if (p.new) {
+        onChatUpdated(p.new);
         renderChatList();
       }
-    })
-    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'chat_members' }, (payload) => onDbMemberUpdate(payload.new))
-    .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'chat_members' }, () => onDbMemberChange())
-    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chats' }, (payload) => onDbNewChat(payload.new))
-    .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'chats' }, (payload) => {
-      if (payload.old && payload.old.id) {
-        const had = state.chats.delete(payload.old.id);
-        if (state.activeChatId === payload.old.id && had) {
+    }))
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'chat_members' }, rt((p) => onDbMemberUpdate(p.new)))
+    .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'chat_members' }, rt(() => onDbMemberChange()))
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chats' }, rt((p) => onDbNewChat(p.new)))
+    .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'chats' }, rt((p) => {
+      if (p.old && p.old.id) {
+        const had = state.chats.delete(p.old.id);
+        if (state.activeChatId === p.old.id && had) {
           closeChat();
           toast('Чат был удалён');
         }
         renderChatList();
       }
-    })
+    }))
     .subscribe((status) => {
-      if (status === 'CHANNEL_ERROR') {
-        // переподключение через 5 секунд
-        setTimeout(() => { stopRealtime(); if (state.me) startRealtime(); }, 5000);
+      console.info('[realtime]', status);
+      if (status === 'SUBSCRIBED') { rtRetries = 0; return; }
+      if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+        scheduleRejoin();
       }
     });
 }
+
+// ---------- автовоссоединение realtime ----------
+let rtRetries = 0;
+let rtRejoinTimer = null;
+let rtRejoinInFlight = false;
+
+async function rejoinRealtime() {
+  if (!state.me || rtRejoinInFlight) return;
+  rtRejoinInFlight = true;
+  const sb = getSb();
+  if (realtimeChan) {
+    const old = realtimeChan;
+    realtimeChan = null;
+    try { await sb.removeChannel(old); } catch { /* уже удалён */ }
+  }
+  rtRejoinInFlight = false;
+  if (!state.me) return;
+  startRealtime();
+}
+
+function scheduleRejoin() {
+  rtRetries += 1;
+  if (rtRetries === 3) toast('Связь realtime пропала — переподключаюсь…');
+  if (rtRejoinTimer) return;
+  const delay = Math.min(3000 * rtRetries, 10000);
+  rtRejoinTimer = setTimeout(() => {
+    rtRejoinTimer = null;
+    rejoinRealtime();
+  }, delay);
+}
+
+// watchdog: раз в 30 сек проверяем, жив ли канал
+setInterval(() => {
+  if (!state.me) return;
+  if (rtRejoinInFlight || rtRejoinTimer) return;
+  if (!realtimeChan || ['closed', 'errored'].includes(realtimeChan.state)) {
+    scheduleRejoin();
+  }
+}, 30000);
 
 function stopRealtime() {
   if (realtimeChan) {
