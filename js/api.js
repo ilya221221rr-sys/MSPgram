@@ -166,6 +166,47 @@ export const dbApi = {
     return data;
   },
 
+  // ---------- админ-панель (только is_admin) ----------
+
+  async adminListUsers() {
+    const { data, error } = await _sb.from('profiles').select('*').order('created_at');
+    if (error) handleErr(error, 'Не удалось получить пользователей');
+    return data || [];
+  },
+
+  async adminUpdateProfile(id, patch) {
+    const { data, error } = await _sb.from('profiles').update(patch).eq('id', id).select().single();
+    if (error) handleErr(error, 'Не удалось изменить профиль');
+    return data;
+  },
+
+  async adminSetBan(id, banned, reason, untilIso) {
+    const patch = banned
+      ? { is_banned: true, ban_reason: reason || null, banned_until: untilIso || null }
+      : { is_banned: false, ban_reason: null, banned_until: null };
+    const { error } = await _sb.from('profiles').update(patch).eq('id', id);
+    if (error) handleErr(error, 'Не удалось применить бан');
+    return true;
+  },
+
+  // все чаты проекта, БЕЗ записи в state (иначе они попали бы в личный список)
+  async adminFetchChats() {
+    const { data, error } = await _sb.from('chats')
+      .select('*, chat_members(*, profiles(*))')
+      .order('last_message_at', { ascending: false });
+    if (error) handleErr(error, 'Не удалось получить чаты');
+    return data || [];
+  },
+
+  async adminLoadMessages(chatId, limit = 300) {
+    const { data, error } = await _sb.from('messages')
+      .select('*').eq('chat_id', chatId)
+      .order('created_at', { ascending: true })
+      .limit(limit);
+    if (error) handleErr(error, 'Не удалось получить переписку');
+    return data || [];
+  },
+
   async checkNickname(nick) {
     const { data, error } = await _sb.from('profiles')
       .select('id').ilike('nickname', nick).maybeSingle();

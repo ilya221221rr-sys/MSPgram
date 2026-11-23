@@ -1184,3 +1184,68 @@ input::placeholder, textarea::placeholder { color: #5c688a; }
   font-size: 10px; color: var(--muted); opacity: .7;
   margin-left: 4px; font-weight: 500;
 }
+
+/* ============================================================
+   3.3: админ-панель, бан-экран
+   ============================================================ */
+.admin-overlay { z-index: 400; }
+.admin-modal { max-width: 520px; }
+.adm-tabs { display: flex; gap: 8px; margin: 10px 0 12px; }
+.adm-tab {
+  flex: 1; padding: 9px; border-radius: 10px; border: 1px solid var(--border);
+  background: none; color: var(--muted); cursor: pointer; font-weight: 600;
+}
+.adm-tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.adm-body { max-height: 46vh; overflow-y: auto; }
+.adm-empty { padding: 18px; text-align: center; color: var(--muted); font-size: 13px; }
+
+.adm-user-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 6px; border-bottom: 1px solid var(--border);
+}
+.adm-user-main { flex: 1; min-width: 0; }
+.adm-user-name { font-weight: 600; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.adm-user-sub { font-size: 12px; color: var(--muted); }
+.adm-user-sub.danger { color: var(--danger, #e5484d); }
+.adm-user-actions { display: flex; gap: 6px; }
+.adm-btn {
+  border: 1px solid var(--border); background: none; color: var(--text);
+  border-radius: 8px; padding: 6px 9px; cursor: pointer; font-size: 14px;
+}
+.adm-btn.danger { color: #e5484d; }
+.adm-btn.ok { color: var(--ok, #46c26e); }
+.adm-btn.sm { padding: 3px 6px; font-size: 12px; }
+.adm-badge {
+  font-size: 9px; font-weight: 800; letter-spacing: .5px;
+  padding: 2px 6px; border-radius: 6px;
+}
+.adm-badge.admin { background: var(--accent); color: #fff; }
+.adm-badge.banned { background: #e5484d; color: #fff; }
+
+.adm-select {
+  width: 100%; padding: 9px; border-radius: 10px;
+  background: var(--bg2, #1c1f26); color: var(--text);
+  border: 1px solid var(--border);
+}
+.adm-log { margin-top: 10px; }
+.adm-msg { border-bottom: 1px solid var(--border); padding: 8px 4px; }
+.adm-msg-head { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.adm-msg-head b { color: var(--accent); }
+.adm-msg-time { color: var(--muted); font-size: 11px; flex: 1; }
+.adm-msg-text { margin-top: 3px; font-size: 13px; white-space: pre-wrap; word-break: break-word; }
+
+.ban-overlay {
+  position: fixed; inset: 0; z-index: 1000;
+  background: linear-gradient(160deg, #12060a, #05070d);
+  display: flex; align-items: center; justify-content: center;
+}
+.ban-card {
+  max-width: 360px; text-align: center; padding: 34px 30px;
+  background: rgba(229, 72, 77, .06); border: 1px solid rgba(229, 72, 77, .35);
+  border-radius: 18px;
+}
+.ban-emoji { font-size: 44px; }
+.ban-card h2 { margin: 10px 0 6px; color: #e5484d; }
+.ban-reason { font-size: 14px; color: var(--text); }
+.ban-until { font-size: 13px; color: var(--muted); margin-top: 4px; }
+.ban-hint { font-size: 12px; color: var(--muted); margin: 14px 0 18px; }

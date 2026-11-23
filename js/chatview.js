@@ -1330,6 +1330,9 @@ export function initChatViewUI() {
     if (t) openProfile(t.dataset.profile);
   });
 
+  // presence-события обновляют «онлайн / был(а) N мин назад» в шапке
+  bus.on('presence', () => renderHeader());
+
   const input = qs('#msg-input');
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendText(); }

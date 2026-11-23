@@ -122,13 +122,16 @@ function chatRowEl(chat, inSearch) {
       ? `<span class="avatar md server-av" style="background:${serverColor(chat.id)}">${esc((chat.title || 'S')[0].toUpperCase())}</span>`
       : avatarHTML(chat.type === 'group' ? chat.avatar_url : other?.avatar_url, title, 'md', false);
 
-  // строка «кто это и когда был(а) в сети» — для личных чатов
-  const metaLine = (!saved && !isServer && other)
-    ? `<div class="chat-row-meta">
-         <span class="crm-nick">@${esc(other.nickname)}</span>
-         <span class="crm-status ${isOnline ? 'on' : ''}">${isOnline ? 'онлайн' : esc(lastSeenShort(other.last_seen, false))}</span>
-       </div>`
-    : '';
+  // строка «кто это и когда был(а) в сети» — для личных чатов;
+  // для серверов — число участников
+  const metaLine = isServer
+    ? `<div class="chat-row-meta"><span class="crm-nick">${(chat.members || []).length} участник${pluralRows((chat.members || []).length)}</span><span class="crm-status">🌐</span></div>`
+    : (!saved && other)
+      ? `<div class="chat-row-meta">
+           <span class="crm-nick">@${esc(other.nickname)}</span>
+           <span class="crm-status ${isOnline ? 'on' : ''}">${isOnline ? 'онлайн' : esc(lastSeenShort(other.last_seen, false))}</span>
+         </div>`
+      : '';
 
   const row = el(`
     <div class="chat-row${active}${isServer ? ' server-row' : ''}" data-chat="${chat.id}">
@@ -264,6 +267,13 @@ export function openServerModal() {
   });
 
   setTimeout(() => qs('#gr-title', m).focus(), 50);
+}
+
+function pluralRows(n) {
+  const m10 = n % 10, m100 = n % 100;
+  if (m10 === 1 && m100 !== 11) return '';
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return 'а';
+  return 'ов';
 }
 
 // ---------- аватарка и имя в сайдбаре ----------
