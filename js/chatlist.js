@@ -6,6 +6,12 @@ import {
 } from './utils.js';
 import { openProfile } from './profile.js';
 import { openSettingsModal } from './settings.js';
+import { presenceLabel, presenceKind } from './api-v18.js';
+import { appendGlobalResults } from './gsearch.js';
+
+let listFilter = 'all';          // all | direct | groups | unread
+const FILTERS = [['all', 'Все'], ['unread', 'Непрочитанные'], ['direct', 'Личные'], ['groups', 'Группы']];
+let searchToken = 0;
 
 let searchMode = false;
 let searchResults = [];
@@ -51,6 +57,8 @@ export function renderChatList() {
   const list = qs('#chat-list');
   const results = qs('#search-results');
   const q = qs('#search-input').value.trim();
+  updateUnreadIndicators();
+  renderFilters();
 
     if (searchMode) {
     list.classList.add('hidden');
@@ -89,12 +97,17 @@ export function renderChatList() {
       results.appendChild(el('<div class="search-section">Люди</div>'));
       searchResults.forEach((p) => results.appendChild(personRowEl(p)));
     }
-    if (!matchedChats.length && !searchResults.length) {
-      results.appendChild(el(`<div class="list-empty">
-        Никого не нашлось по «${esc(q)}».<br><br>
-        Есть ссылка-приглашение на сервер?<br>Открой её в браузере — вступишь автоматически.
-      </div>`));
-    }
+    const extra = el('<div class="search-extra"></div>');
+    results.appendChild(extra);
+    const token = ++searchToken;
+    appendGlobalResults(extra, q, () => token !== searchToken || qs('#search-input').value.trim() !== q).then(() => {
+      if (token === searchToken && !matchedChats.length && !searchResults.length && !extra.children.length) {
+        results.appendChild(el(`<div class="list-empty">
+          Ничего не нашлось по «${esc(q)}».<br><br>
+          Есть ссылка-приглашение на сервер?<br>Открой её в браузере — вступишь автоматически.
+        </div>`));
+      }
+    }).catch(() => {});
     return;
   }
 
@@ -105,13 +118,20 @@ export function renderChatList() {
 
   const all = [...state.chats.values()]
     .sort((a, b) => new Date(b.last_message_at) - new Date(a.last_message_at));
-  const active = all.filter((c) => !myFlags(c).archived);
+  const passes = (c) => (listFilter === 'all')
+    || (listFilter === 'unread' && (state.unread.get(c.id) || 0) > 0)
+    || (listFilter === 'direct' && c.type !== 'group')
+    || (listFilter === 'groups' && c.type === 'group');
+  const active = all.filter((c) => !myFlags(c).archived && passes(c));
   const archived = all.filter((c) => myFlags(c).archived);
   const pinnedSet = new Set(active.filter((c) => myFlags(c).pinned).map((c) => c.id));
   const servers = active.filter((c) => c.type === 'group' && !pinnedSet.has(c.id));
   const personal = active.filter((c) => c.type !== 'group' && !pinnedSet.has(c.id));
   const pinnedChats = active.filter((c) => pinnedSet.has(c.id));
 
+  if (all.length && !active.length && !archived.length) {
+    list.appendChild(el('<div class="list-empty">В этом разделе пока пусто ✨</div>'));
+  }
   if (!all.length) {
     list.appendChild(el(`<div class="list-empty">
       Пока пусто 🙁<br><br>
@@ -154,50 +174,73 @@ function chatRowEl(chat, inSearch) {
   const other = otherMember(chat, meId);
   const saved = isSavedChat(chat);
   const isServer = chat.type === 'group';
-  const title = saved ? '🔖 Избранное' : chatTitleFor(chat, meId);
-  const isOnline = !saved && !isServer && other && state.online.has(other.id);
+  const title = saved ? 'Избранное' : (chatTitleFor(chat, meId) === 'Чат' && chat.last_message_sender && chat.last_message_sender !== meId ? 'Собеседник' : chatTitleFor(chat, meId));
+  const kind = !saved && !isServer && other ? presenceKind(other) : null;
   const unread = state.unread.get(chat.id) || 0;
+  const flags = myFlags(chat);
   const mine = chat.last_message_sender === meId;
-  let preview = chat.last_message_text || (isServer ? 'Сервер создан' : 'Напиши первое сообщение');
-  if (mine && chat.last_message_text) preview = 'Вы: ' + preview;
+  let preview = chat.last_message_text || (isServer ? 'Сервер создан' : saved ? 'Заметки, файлы, ссылки' : 'Напиши первое сообщение');
   const active = state.activeChatId === chat.id ? ' active' : '';
 
   const av = saved
     ? '<span class="avatar md saved-av">🔖</span>'
     : isServer
-      ? `<span class="avatar md server-av" style="background:${serverColor(chat.id)}">${esc((chat.title || 'S')[0].toUpperCase())}</span>`
-      : avatarHTML(chat.type === 'group' ? chat.avatar_url : other?.avatar_url, title, 'md', false);
+      ? (chat.avatar_url
+        ? avatarHTML(chat.avatar_url, title, 'md', false)
+        : `<span class="avatar md server-av" style="background:${serverColor(chat.id)}">${esc((chat.title || 'S')[0].toUpperCase())}</span>`)
+      : avatarHTML(other?.avatar_url, other ? (other.display_name || other.nickname) : title, 'md', false);
 
-  // строка «кто это и когда был(а) в сети» — для личных чатов;
-  // для серверов — число участников
+  // вторая строка: ник собеседника + статус / число участников
+  const n = (chat.members || []).length;
   const metaLine = isServer
-    ? `<div class="chat-row-meta"><span class="crm-nick">${(chat.members || []).length} участник${pluralRows((chat.members || []).length)}</span><span class="crm-status">🌐</span></div>`
+    ? `<span class="crm-nick">${n} участник${pluralRows(n)}${chat.only_admins_post ? ' · канал' : ''}</span>`
     : (!saved && other)
-      ? `<div class="chat-row-meta">
-           <span class="crm-nick">@${esc(other.nickname)}</span>
-           <span class="crm-status ${isOnline ? 'on' : ''}">${isOnline ? 'онлайн' : esc(lastSeenShort(other.last_seen, false))}</span>
-         </div>`
+      ? `<span class="crm-nick">@${esc(other.nickname)}</span><span class="crm-status ${kind ? 'on' : ''}">${esc(presenceLabel(other, lastSeenShort))}</span>`
       : '';
+  const statusEmoji = !saved && !isServer && other?.status_emoji ? ` <span class="row-emoji">${esc(other.status_emoji)}</span>` : '';
 
   const row = el(`
-    <div class="chat-row${active}${isServer ? ' server-row' : ''}" data-chat="${chat.id}">
-      ${av}
+    <div class="chat-row${active}${isServer ? ' server-row' : ''}${unread ? ' has-unread' : ''}" data-chat="${chat.id}">
+      <div class="row-av">${av}${kind ? `<span class="row-online st-${kind}" title="${kind === 'online' ? 'онлайн' : kind === 'away' ? 'отошёл' : 'не беспокоить'}"></span>` : ''}</div>
       <div class="chat-row-main">
         <div class="chat-row-top">
-          <span class="chat-row-title">${esc(title)}</span>
-          ${inSearch ? '' : `<span class="chat-row-time">${fmtListTime(chat.last_message_at)}</span>`}
+          <span class="chat-row-title">${esc(title)}${statusEmoji}${flags.pinned ? ' <span class="row-pin">📌</span>' : ''}</span>
+          ${inSearch ? '' : `<span class="chat-row-time${unread ? ' hot' : ''}">${fmtListTime(chat.last_message_at)}</span>`}
         </div>
         <div class="chat-row-bottom">
-          <span class="chat-row-preview">${esc(preview)}</span>
-          ${unread ? `<span class="unread-badge${myFlags(chat).muted ? ' muted' : ''}">${unread > 99 ? '99+' : unread}</span>` : ''}
-          ${myFlags(chat).muted ? '<span class="row-muted" title="Без звука">🔕</span>' : ''}
+          <span class="chat-row-preview">${mine && chat.last_message_text ? '<span class="you">Вы:</span> ' : ''}${esc(preview)}</span>
+          ${flags.muted ? '<span class="row-muted" title="Без звука">🔕</span>' : ''}
+          ${unread ? `<span class="unread-badge${flags.muted ? ' muted' : ''}">${unread > 99 ? '99+' : unread}</span>` : ''}
         </div>
-        ${metaLine}
+        ${metaLine ? `<div class="chat-row-meta">${metaLine}</div>` : ''}
       </div>
-      ${isOnline ? '<span class="row-online" title="онлайн"></span>' : ''}
     </div>`);
   row.addEventListener('click', () => bus.emit('open-chat', chat.id));
   return row;
+}
+
+// ---------- фильтры списка и счётчики ----------
+function renderFilters() {
+  const box = qs('#list-filters');
+  if (!box) return;
+  const totalUnread = [...state.unread.values()].reduce((a, b) => a + b, 0);
+  box.innerHTML = FILTERS.map(([k, l]) => `<button class="lf-chip${listFilter === k ? ' on' : ''}" data-f="${k}">${l}${k === 'unread' && totalUnread ? ` <b>${totalUnread > 99 ? '99+' : totalUnread}</b>` : ''}</button>`).join('');
+  if (!box._wired) {
+    box._wired = true;
+    box.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-f]'); if (!b) return;
+      listFilter = b.dataset.f; renderChatList();
+    });
+  }
+}
+
+function updateUnreadIndicators() {
+  const total = [...state.unread.entries()].reduce((a, [id, n]) => {
+    const c = state.chats.get(id);
+    return a + (c && myFlags(c).muted ? 0 : n);
+  }, 0);
+  document.title = total ? `(${total > 99 ? '99+' : total}) MSPgram` : 'MSPgram — мессенджер';
+  try { if (navigator.setAppBadge) (total ? navigator.setAppBadge(total) : navigator.clearAppBadge()).catch(() => {}); } catch { /* */ }
 }
 
 function serverColor(id) {
@@ -391,7 +434,8 @@ function pluralRows(n) {
 export function renderSidebarMe() {
   const btn = qs('#profile-btn');
   if (!btn || !state.me) return;
-  btn.innerHTML = avatarHTML(state.me.avatar_url, state.me.display_name || state.me.nickname, 'md');
+  const st = state.me.presence_status || 'online';
+  btn.innerHTML = `<span class="me-av">${avatarHTML(state.me.avatar_url, state.me.display_name || state.me.nickname, 'md')}<i class="me-dot st-${st}"></i></span>`;
   btn.title = 'Настройки: @' + (state.me.nickname || '');
 }
 

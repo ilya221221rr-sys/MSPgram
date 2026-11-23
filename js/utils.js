@@ -156,8 +156,21 @@ export function ensureAudio() {
   }
   if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
 }
-export function beep() {
-  if (getPrefs().sound === false) return;
+export const SOUNDS = {
+  pop:   { label: 'Поп',     notes: [[880, 0], [1175, 0.12]], type: 'sine' },
+  chime: { label: 'Колокольчик', notes: [[1318, 0], [1760, 0.1], [2093, 0.2]], type: 'sine' },
+  drop:  { label: 'Капля',   notes: [[660, 0], [440, 0.09]], type: 'triangle' },
+  ding:  { label: 'Динь',    notes: [[1568, 0]], type: 'sine' },
+  soft:  { label: 'Мягкий',  notes: [[523, 0], [659, 0.1]], type: 'triangle' },
+};
+export function beep(kind) {
+  const p = getPrefs();
+  if (p.sound === false || p._dnd) return;           // звук выключен или «не беспокоить»
+  const key = p.soundType || 'pop';
+  if (key === 'off') return;
+  const def = SOUNDS[key] || SOUNDS.pop;
+  const notes = kind === 'mention' ? [[1047, 0], [1319, 0.09], [1568, 0.18]] : def.notes;
+  const vol = Math.max(0.02, Math.min(0.3, ((p.soundVol ?? 60) / 100) * 0.22));
   try {
     ensureAudio();
     if (!audioCtx) return;
@@ -165,23 +178,27 @@ export function beep() {
     const g = audioCtx.createGain();
     g.connect(audioCtx.destination);
     g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(0.12, t + 0.02);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
-    [[880, 0], [1175, 0.12]].forEach(([freq, dt]) => {
+    g.gain.exponentialRampToValueAtTime(vol, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.12 + notes[notes.length - 1][1] + 0.2);
+    notes.forEach(([freq, dt]) => {
       const o = audioCtx.createOscillator();
-      o.type = 'sine';
+      o.type = def.type;
       o.frequency.value = freq;
       o.connect(g);
       o.start(t + dt);
-      o.stop(t + dt + 0.18);
+      o.stop(t + dt + 0.2);
     });
   } catch { /* тишина */ }
 }
 
-export function toast(msg, ms = 2800) {
+export function toast(msg, ms = 2800, opts = {}) {
   const root = qs('#toast-root');
-  const t = el(`<div class="toast">${esc(msg)}</div>`);
+  if (!root) return;
+  const kind = opts.kind || (/^(Ошибка|Не удалось|Не отправилось|Нельзя)/.test(msg) ? 'err' : /✓|🎉/.test(msg) ? 'ok' : '');
+  const t = el(`<div class="toast ${kind}">${opts.html || esc(msg)}</div>`);
+  if (opts.onClick) { t.classList.add('clickable'); t.addEventListener('click', () => { opts.onClick(); t.remove(); }); }
   root.appendChild(t);
+  while (root.children.length > 4) root.firstChild.remove();
   setTimeout(() => { t.classList.add('hide'); setTimeout(() => t.remove(), 350); }, ms);
 }
 
