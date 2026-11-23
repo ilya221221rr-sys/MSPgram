@@ -35,17 +35,23 @@
 
 <!-- ============ ЭКРАН ВХОДА ============ -->
 <section id="auth-screen" class="screen auth-screen hidden">
-  <div class="auth-card">
-    <div class="auth-logo">✈️</div>
-    <h1>MSPgram</h1>
-    <p class="auth-sub">Свой мессенджер. Без рекламы. Без VPN.</p>
-    <div class="feature-chips">
-      <span>💬 Чаты и группы</span>
-      <span>🎤 Голосовые</span>
-      <span>🎥 Видео</span>
-      <span>📎 Файлы до 20 МБ</span>
-      <span>⚡ Realtime</span>
+  <div class="auth-hero">
+    <div class="hero-glow g1"></div>
+    <div class="hero-glow g2"></div>
+    <div class="hero-glow g3"></div>
+    <div class="hero-content">
+      <img src="icons/icon-512.png" alt="" class="hero-logo">
+      <h1 class="hero-title">MSPgram</h1>
+      <p class="hero-tag">Мессенджер нового поколения.<br>Серверы и каналы — как в Discord.<br>Скорость и удобство — как в Telegram.</p>
+      <div class="hero-badges">
+        <span>🏰 Серверы</span><span># Каналы</span><span>📞 Звонки</span><span>🎙 Голосовые</span><span>🎬 Стикеры</span>
+      </div>
+      <div class="hero-line"></div>
     </div>
+  </div>
+  <div class="auth-card">
+    <div class="auth-logo">✨</div>
+    <h1 class="card-title">Добро пожаловать</h1>
     <div class="tabs" id="auth-tabs">
       <button id="tab-login" class="tab active" type="button">Вход</button>
       <button id="tab-register" class="tab" type="button">Регистрация</button>
@@ -103,6 +109,7 @@
 
 <!-- ============ ПРИЛОЖЕНИЕ ============ -->
 <div id="app" class="app hidden">
+  <nav id="server-rail" class="server-rail"></nav>
   <aside class="sidebar">
     <header class="sidebar-head">
       <button id="profile-btn" class="avatar-btn" title="Настройки профиля"></button>
@@ -130,6 +137,9 @@
         <button id="back-btn" class="icon-btn back" title="Назад">←</button>
         <div id="chat-head-info" class="chat-head-info"></div>
         <button id="channel-pill" class="channel-pill hidden" title="Каналы"></button>
+        <button id="call-audio" class="icon-btn hidden" title="Позвонить">📞</button>
+        <button id="call-video" class="icon-btn hidden" title="Видеозвонок">📹</button>
+        <button id="voice-btn" class="icon-btn hidden" title="Голосовой канал">🎙</button>
         <button id="chat-search-btn" class="icon-btn" title="Поиск по сообщениям">🔍</button>
         <button id="chat-info-btn" class="icon-btn" title="Информация">⋯</button>
       </header>
@@ -146,6 +156,8 @@
         <div class="composer-row">
           <button id="attach-btn" class="icon-btn" title="Прикрепить файл или фото">📎</button>
           <input id="file-input" type="file" multiple class="hidden">
+          <button id="sticker-btn" class="icon-btn" title="Стикеры">🙂</button>
+          <div id="sticker-panel" class="sticker-panel hidden"></div>
           <button id="mic-btn" class="icon-btn" title="Голосовое сообщение">🎤</button>
           <button id="video-btn" class="icon-btn" title="Видеосообщение (60 сек)">🎥</button>
           <textarea id="msg-input" rows="1" placeholder="Сообщение…  Enter — отправить"></textarea>

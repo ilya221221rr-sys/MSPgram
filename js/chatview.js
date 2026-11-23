@@ -5,6 +5,8 @@ import {
   relLastSeen, fmtBytes, fmtDuration, confirmDialog, debounce, beep, getPrefs, setPrefs,
 } from './utils.js';
 import { recordVoice, recordVideo, canRecordVoice, canRecordVideo, extOf } from './media.js';
+import { startCall, joinVoice, leaveVoice, inVoice, initCallsUI } from './calls.js';
+import { initStickers, stickerEmojiOf, stickerAnimOf } from './stickers.js';
 
 let msgs = [];
 let msgIds = new Set();
@@ -67,6 +69,7 @@ export async function openChat(chatId, opts = {}) {
 
   renderHeader();
   renderPinnedBar();
+  updateCallButtons();
   const box = qs('#messages');
   box.innerHTML = '<div class="loader">Загружаю…</div>';
   box.scrollTop = 0;
@@ -337,6 +340,9 @@ function messageEl(m, chat, showDaySep) {
     ? `<div class="msg-fwd">↪ Переслано от <b>${esc(m.forwarded_from)}</b></div>` : '';
 
   let content = '';
+  if (m.attachment_type === 'sticker' && m.attachment_name) {
+    content += `<div class="sticker-msg ${stickerAnimOf(m)}" title="Стикер">${stickerEmojiOf(m)}</div>`;
+  }
   if (m.attachment_type === 'image' && m.attachment_url) {
     content += `<img class="msg-img" src="${esc(m.attachment_url)}" alt="Фото" loading="lazy">`;
   }
@@ -1269,10 +1275,24 @@ export function initChatViewUI() {
   qs('#chat-info-btn').addEventListener('click', openChatInfo);
   qs('#send-btn').addEventListener('click', sendText);
 
-  // каналы + поиск
+  // каналы + поиск + звонки
   qs('#channel-pill').addEventListener('click', (e) => {
     e.stopPropagation();
     toggleChannelMenu();
+  });
+  qs('#call-audio').addEventListener('click', async () => {
+    const chat = state.chats.get(state.activeChatId);
+    if (chat) await startCall(chat, false);
+  });
+  qs('#call-video').addEventListener('click', async () => {
+    const chat = state.chats.get(state.activeChatId);
+    if (chat) await startCall(chat, true);
+  });
+  qs('#voice-btn').addEventListener('click', async () => {
+    const chat = state.chats.get(state.activeChatId);
+    if (!chat) return;
+    if (inVoice()) { leaveVoice(); return; }
+    await joinVoice(chat);
   });
   qs('#chat-search-btn').addEventListener('click', () => setSearchOpen(!searchOpen));
   qs('#search-close').addEventListener('click', () => setSearchOpen(false));
@@ -1406,6 +1426,20 @@ export function initChatViewUI() {
   });
 
   setInterval(() => { if (state.activeChatId) renderTyping(); }, 1500);
+
+  initStickers();
+}
+
+// кнопки звонков/голосового показываем по типу чата
+export function updateCallButtons() {
+  const chat = state.chats.get(state.activeChatId);
+  if (!chat) return;
+  const saved = isSavedChat(chat);
+  const direct = chat.type === 'direct' && !saved;
+  const server = dbApi.isServerChat(chat);
+  qs('#call-audio').classList.toggle('hidden', !direct);
+  qs('#call-video').classList.toggle('hidden', !direct);
+  qs('#voice-btn').classList.toggle('hidden', !server);
 }
 
 // ================== ЛАЙТБОКС ==================
