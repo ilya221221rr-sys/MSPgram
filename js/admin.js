@@ -31,6 +31,8 @@ export async function openAdminPanel() {
         <div class="adm-tabs">
           <button class="adm-tab active" data-tab="users">Пользователи</button>
           <button class="adm-tab" data-tab="log">Переписка</button>
+          <button class="adm-tab" data-tab="reports">Жалобы</button>
+          <button class="adm-tab" data-tab="stats">Статистика</button>
         </div>
         <div class="adm-body" id="adm-body"></div>
         <div class="modal-actions">
@@ -171,13 +173,107 @@ export async function openAdminPanel() {
     });
   }
 
+  // ---------- вкладка Жалобы ----------
+  async function renderReports() {
+    body.innerHTML = '<div class="adm-empty">Загрузка…</div>';
+    let reps;
+    try { reps = await dbApi.adminReports(); }
+    catch (e) { body.innerHTML = `<div class="adm-empty">${esc(e.message)}</div>`; return; }
+
+    const open = reps.filter((r) => r.status === 'open');
+    const done = reps.filter((r) => r.status !== 'open');
+    body.innerHTML = '';
+    if (!reps.length) { body.innerHTML = '<div class="adm-empty">Жалоб нет 🎉</div>'; return; }
+
+    const list = el('<div></div>');
+    const row = (r) => {
+      const t = r.target;
+      const rep = r.reporter;
+      const box = el(`
+        <div class="adm-msg ${r.status === 'open' ? '' : 'adm-done'}">
+          <div class="adm-msg-head">
+            <b>${esc(t ? (t.display_name || '@' + t.nickname) : 'Пользователь')}</b>
+            ${r.status === 'open' ? '<span class="adm-badge banned">ОТКРЫТА</span>' : '<span class="adm-badge admin">ЗАКРЫТА</span>'}
+            <span class="adm-msg-time">${new Date(r.created_at).toLocaleString('ru')}</span>
+          </div>
+          <div class="adm-msg-text">${esc(r.reason || 'Без причины')}</div>
+          <div class="adm-user-sub">от ${esc(rep ? (rep.display_name || '@' + rep.nickname) : '?')} на @${esc(t?.nickname || '?')}</div>
+          ${r.status === 'open' ? `
+          <div class="chat-flag-row" style="margin-top:8px">
+            <button class="btn danger sm" data-ract="ban7" data-id="${t?.id}" data-rid="${r.id}">🚫 Бан 7д</button>
+            <button class="btn danger sm" data-ract="ban0" data-id="${t?.id}" data-rid="${r.id}">🚫 Бан навсегда</button>
+            <button class="btn ghost sm" data-ract="close" data-rid="${r.id}">Закрыть жалобу</button>
+          </div>` : ''}
+        </div>`);
+      return box;
+    };
+    open.forEach((r) => list.appendChild(row(r)));
+    if (done.length) {
+      list.appendChild(el('<div class="search-section">Обработанные</div>'));
+      done.forEach((r) => list.appendChild(row(r)));
+    }
+    body.appendChild(list);
+
+    body.querySelectorAll('[data-ract]').forEach((b) => {
+      b.addEventListener('click', async () => {
+        const act = b.dataset.ract;
+        try {
+          if (act === 'close') {
+            await dbApi.adminSetReportStatus(b.dataset.rid, 'closed');
+            toast('Жалоба закрыта');
+          } else {
+            const uid = b.dataset.id;
+            if (!uid) { toast('Пользователь не найден'); return; }
+            const days = act === 'ban7' ? 7 : null;
+            await dbApi.adminSetBan(uid, true, 'По жалобе из админ-панели',
+              days ? new Date(Date.now() + days * 86400000).toISOString() : null);
+            if (b.dataset.rid) await dbApi.adminSetReportStatus(b.dataset.rid, 'banned');
+            toast(`Забанен ${days ? 'на 7 дней' : 'навсегда'} ✓`);
+          }
+          renderReports();
+        } catch (e) { toast('Ошибка: ' + e.message); }
+      });
+    });
+  }
+
+  // ---------- вкладка Статистика ----------
+  async function renderStats() {
+    body.innerHTML = '<div class="adm-empty">Считаю…</div>';
+    let s;
+    try { s = await dbApi.adminStats(); }
+    catch (e) { body.innerHTML = `<div class="adm-empty">${esc(e.message)}</div>`; return; }
+
+    const card = (label, val) => `
+      <div class="stat-card"><div class="stat-val">${val ?? '—'}</div><div class="stat-label">${label}</div></div>`;
+    const max = Math.max(...s.days, 1);
+    const bars = s.days.map((v, i) => `
+      <div class="stat-bar-col">
+        <div class="stat-bar" style="height:${Math.round((v / max) * 64) + 2}px" title="${v} сообщ."></div>
+        <span class="stat-day">${['пн','вт','ср','чт','пт','сб','вс'][new Date(Date.now() - (6 - i) * 86400000).getDay()]}</span>
+      </div>`).join('');
+
+    body.innerHTML = `
+      <div class="stat-grid">
+        ${card('Пользователи', s.users)}
+        ${card('Чаты', s.chats)}
+        ${card('Сообщения', s.messages)}
+        ${card('Каналы', s.channels)}
+        ${card('Открытые жалобы', s.reports)}
+        ${card('Блокировки', s.blocks)}
+      </div>
+      <div class="search-section">Сообщения за 7 дней</div>
+      <div class="stat-chart">${bars}</div>`;
+  }
+
   // ---------- табы ----------
   m.querySelectorAll('.adm-tab').forEach((tab) => {
     tab.addEventListener('click', () => {
       m.querySelectorAll('.adm-tab').forEach((t) => t.classList.remove('active'));
       tab.classList.add('active');
       if (tab.dataset.tab === 'users') renderUsers();
-      else renderLog();
+      else if (tab.dataset.tab === 'log') renderLog();
+      else if (tab.dataset.tab === 'reports') renderReports();
+      else renderStats();
     });
   });
 

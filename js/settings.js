@@ -42,9 +42,11 @@ export function openSettingsModal() {
           <div id="st-avatar-preview">${avatarHTML(me.avatar_url, me.display_name || me.nickname, 'xl')}</div>
           <div>
             <button class="btn ghost sm" id="st-avatar-btn">Сменить аватар</button>
+            <button class="btn ghost sm" id="st-cover-btn">Сменить обложку</button>
             <div class="field-hint">PNG/JPG/WEBP, до 5 МБ</div>
           </div>
           <input type="file" id="st-avatar-file" accept="image/*" class="hidden">
+          <input type="file" id="st-cover-file" accept="image/*" class="hidden">
         </div>
         <label class="field">Имя (видно в чатах)
           <input id="st-display" type="text" maxlength="40" value="${esc(me.display_name)}" placeholder="Как тебя зовут">
@@ -53,6 +55,9 @@ export function openSettingsModal() {
           <input id="st-nick" type="text" maxlength="20" value="${esc(me.nickname)}">
         </label>
         <div class="field-hint" id="st-nick-hint"></div>
+        <label class="field">Свой статус (виден в профиле)
+          <input id="st-status" type="text" maxlength="80" value="${esc(me.status_text || '')}" placeholder="Например: Кодю новый MSPgram 🚀">
+        </label>
         <label class="field">О себе
           <input id="st-bio" type="text" maxlength="120" value="${esc(me.bio)}" placeholder="Пара слов о себе">
         </label>
@@ -138,6 +143,21 @@ export function openSettingsModal() {
     }
   });
 
+  // ---------- обложка профиля ----------
+  const coverInput = qs('#st-cover-file', m);
+  qs('#st-cover-btn', m).addEventListener('click', () => coverInput.click());
+  coverInput.addEventListener('change', async () => {
+    const file = coverInput.files[0];
+    if (!file) return;
+    try {
+      toast('Загружаю обложку…');
+      await dbApi.uploadCover(file);
+      toast('Обложка обновлена ✓');
+    } catch (e) {
+      qs('#st-error', m).textContent = e.message;
+    }
+  });
+
   const nickInput = qs('#st-nick', m);
   const nickHint = qs('#st-nick-hint', m);
   nickInput.addEventListener('blur', async () => {
@@ -163,6 +183,7 @@ export function openSettingsModal() {
         nickname: nick,
         display_name: qs('#st-display', m).value.trim(),
         bio: qs('#st-bio', m).value.trim(),
+        status_text: qs('#st-status', m).value.trim(),
       };
       if (newAvatarUrl) patch.avatar_url = newAvatarUrl;
       await dbApi.updateMe(patch);

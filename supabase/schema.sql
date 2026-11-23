@@ -502,3 +502,61 @@ create policy "messages admin read" on public.messages for select to authenticat
 create policy "messages admin delete" on public.messages for delete to authenticated using (public.is_admin());
 create policy "chats admin read" on public.chats for select to authenticated using (public.is_admin());
 create policy "members admin read" on public.chat_members for select to authenticated using (public.is_admin());
+
+
+-- ============================================================
+-- Миграция 8 (2026-11-23): v16 Titan
+-- ============================================================
+alter table public.profiles add column if not exists cover_url text;
+alter table public.profiles add column if not exists status_text text;
+alter table public.chat_members add column if not exists muted boolean not null default false;
+alter table public.chat_members add column if not exists pinned boolean not null default false;
+alter table public.chat_members add column if not exists archived boolean not null default false;
+alter table public.chats add column if not exists is_public boolean not null default false;
+
+create unique index if not exists chats_one_saved_per_owner on public.chats (created_by) where is_saved = true;
+
+create table if not exists public.blocks (
+  blocker uuid not null references public.profiles(id) on delete cascade,
+  blocked uuid not null references public.profiles(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (blocker, blocked)
+);
+alter table public.blocks enable row level security;
+create policy "blocks own read" on public.blocks for select to authenticated using (blocker = auth.uid());
+create policy "blocks own insert" on public.blocks for insert to authenticated with check (blocker = auth.uid());
+create policy "blocks own delete" on public.blocks for delete to authenticated using (blocker = auth.uid());
+grant select, insert, delete on public.blocks to authenticated;
+
+create or replace function public.direct_not_blocked(chat uuid, sender uuid)
+returns boolean language sql stable security definer set search_path = 'public' as $$
+  select not exists (
+    select 1 from public.chats c
+    join public.chat_members m on m.chat_id = c.id and m.user_id <> sender
+    where c.id = chat and c.type = 'direct'
+      and exists (select 1 from public.blocks b
+        where (b.blocker = m.user_id and b.blocked = sender)
+           or (b.blocker = sender and b.blocked = m.user_id))
+  );
+$$;
+
+create table if not exists public.reports (
+  id uuid primary key default gen_random_uuid(),
+  reporter uuid not null references public.profiles(id) on delete cascade,
+  target_profile uuid not null references public.profiles(id) on delete cascade,
+  target_message uuid references public.messages(id) on delete set null,
+  reason text not null default '',
+  status text not null default 'open',
+  created_at timestamptz not null default now()
+);
+alter table public.reports enable row level security;
+create policy "reports insert" on public.reports for insert to authenticated
+  with check (reporter = auth.uid() and target_profile <> auth.uid());
+create policy "reports admin read" on public.reports for select to authenticated using (public.is_admin());
+create policy "reports admin update" on public.reports for update to authenticated using (public.is_admin());
+create policy "reports admin delete" on public.reports for delete to authenticated using (public.is_admin());
+grant select, insert, update, delete on public.reports to authenticated;
+
+create policy "chats public read" on public.chats for select to authenticated using (is_public = true);
+create policy "members join public" on public.chat_members for insert to authenticated
+  with check (exists (select 1 from public.chats c where c.id = chat_id and c.is_public = true and c.type = 'group'));
