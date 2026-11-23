@@ -86,7 +86,7 @@ jobs:
           fi
       - name: Деплой функции send-push
         run: |
-          supabase functions deploy send-push --project-ref "$PROJECT_REF" --no-verify-jwt --use-api
+          supabase functions deploy send-push --remote="$PROJECT_REF" --no-verify-jwt --use-api --yes
       - name: SQL — миграции и настройки
         run: |
           set -euo pipefail
