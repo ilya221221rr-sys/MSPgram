@@ -154,9 +154,22 @@ async function boot() {
     if (s) await enterApp(s);
   });
 
-  // 4. Service Worker (PWA)
-  if ('serviceWorker' in navigator && location.protocol === 'https:' || location.hostname === 'localhost') {
+  // 4. Service Worker (PWA) + автообновление
+  if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
     navigator.serviceWorker.register('./service-worker.js').catch((e) => console.warn('SW:', e.message));
+    // новый SW активировался (skipWaiting) — перезагружаемся один раз, чтобы
+    // пользователь всегда был на свежем коде без Ctrl+Shift+R
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (sessionStorage.getItem('msp_reloaded') !== '1') {
+        sessionStorage.setItem('msp_reloaded', '1');
+        location.reload();
+      }
+    });
+    // проверка обновлений каждые 5 минут
+    const bumpSw = () => navigator.serviceWorker.getRegistration()
+      .then((r) => r && r.update().catch(() => {})).catch(() => {});
+    bumpSw();
+    setInterval(bumpSw, 300000);
   }
 }
 

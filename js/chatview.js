@@ -7,6 +7,7 @@ import {
 import { recordVoice, recordVideo, canRecordVoice, canRecordVideo, extOf } from './media.js';
 import { startCall, joinVoice, leaveVoice, inVoice, initCallsUI } from './calls.js';
 import { initStickers, stickerEmojiOf, stickerAnimOf } from './stickers.js';
+import { openProfile } from './profile.js';
 
 let msgs = [];
 let msgIds = new Set();
@@ -133,9 +134,11 @@ function renderHeader() {
     : avatarHTML(chat.type === 'group' ? chat.avatar_url : other?.avatar_url, chatTitleFor(chat), 'md', false);
 
   const info = qs('#chat-head-info');
+  const headProfile = (!saved && chat.type === 'direct' && other)
+    ? ` data-profile="${esc(other.id)}" title="Открыть профиль"` : '';
   info.innerHTML = `
     ${headAv}
-    <div class="chat-head-text">
+    <div class="chat-head-text clickable"${headProfile}>
       <div class="chat-head-title">${esc(chatTitleFor(chat))}</div>
       <div class="chat-head-sub ${online ? 'on' : ''}">${esc(sub)}</div>
     </div>`;
@@ -319,7 +322,6 @@ function reactionsHTML(m) {
 function messageEl(m, chat, showDaySep) {
   const meId = state.me.id;
   const own = m.sender_id === meId;
-  const isGroup = chat.type === 'group';
   const sender = memberProfile(chat, m.sender_id);
   const name = sender ? (sender.display_name || `@${sender.nickname}`) : 'Участник';
 
@@ -386,8 +388,10 @@ function messageEl(m, chat, showDaySep) {
   }
   const edited = m.edited_at ? '<span class="msg-edited">изм.</span>' : '';
 
-  const author = (!own && isGroup)
-    ? `<div class="msg-author">${avatarHTML(sender?.avatar_url, name, 'xs')}${esc(name)}</div>` : '';
+  // автор показывается у ВСЕХ входящих сообщений (и в личных чатах тоже);
+  // клик по имени/аватарке открывает профиль
+  const author = !own
+    ? `<div class="msg-author clickable" data-profile="${esc(m.sender_id)}" title="Открыть профиль">${avatarHTML(sender?.avatar_url, name, 'xs')}${esc(name)}</div>` : '';
 
   parts.push(`
     <div class="msg-row${own ? ' own' : ''}" data-id="${m.id}">
@@ -1314,6 +1318,17 @@ export function initChatViewUI() {
     updateScrollBtn();
   });
   qs('#messages').addEventListener('scroll', updateScrollBtn, { passive: true });
+
+  // клик по имени/аватарке автора сообщения → профиль
+  qs('#messages').addEventListener('click', (e) => {
+    const t = e.target.closest('[data-profile]');
+    if (t) { e.stopPropagation(); openProfile(t.dataset.profile); }
+  });
+  // клик по имени/аватарке в шапке чата → профиль собеседника
+  qs('#chat-head-info').addEventListener('click', (e) => {
+    const t = e.target.closest('[data-profile]');
+    if (t) openProfile(t.dataset.profile);
+  });
 
   const input = qs('#msg-input');
   input.addEventListener('keydown', (e) => {

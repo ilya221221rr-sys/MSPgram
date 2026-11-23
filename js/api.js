@@ -160,6 +160,12 @@ export const dbApi = {
     return data;
   },
 
+  async loadProfile(id) {
+    const { data, error } = await _sb.from('profiles').select('*').eq('id', id).maybeSingle();
+    if (error) handleErr(error, 'Профиль недоступен');
+    return data;
+  },
+
   async checkNickname(nick) {
     const { data, error } = await _sb.from('profiles')
       .select('id').ilike('nickname', nick).maybeSingle();
