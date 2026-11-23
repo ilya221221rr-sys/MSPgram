@@ -1,0 +1,6 @@
+# Нужен только для деплоя через Supabase CLI: функция send-push работает без Verify JWT
+# (проверка пользователя/секрета выполняется внутри самой функции).
+project_id = "mspgram"
+
+[functions.send-push]
+verify_jwt = false

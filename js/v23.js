@@ -8,7 +8,7 @@ import { getSb, state } from './api.js';
 import { qs, esc, el, toast } from './utils.js';
 import { pushSupported, subscribePush, sendTestPush, syncPushSilently } from './webpush.js';
 
-export const VERSION = 'v23';
+export const VERSION = 'v24';
 let booted = false;
 
 // ---------- 1. автопереподписка ----------
@@ -86,7 +86,7 @@ async function runChecks() {
     if (error) throw error;
     fn = data;
   } catch (e) {
-    add(false, 'Функция send-push', 'Недоступна: не задеплоена, либо включён Verify JWT. ' + (e && e.message ? '(' + e.message + ')' : ''));
+    add(false, 'Функция send-push', 'Недоступна: не задеплоена (запусти GitHub → Actions → «Включить push на сервере», см. UPDATE-v24.md) либо включён Verify JWT. ' + (e && e.message ? '(' + e.message + ')' : ''));
   }
   if (fn) {
     add(!!fn.ready, 'Ключи VAPID на сервере', fn.ready ? 'Заданы' : 'Не заданы: добавь VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY в Edge Functions → Secrets');
