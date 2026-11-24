@@ -34,7 +34,7 @@ jobs:
         if: failure()
         shell: bash
         run: |
-          grep -E "^e: |^> |FAILURE: Build|What went wrong|Caused by|Could not|A problem occurred|not found" /tmp/build.log | head -60 | cut -c1-220 | while IFS= read -r line; do
+          grep -E "^e: |FAILURE: Build|What went wrong|Caused by|Could not|A problem occurred" /tmp/build.log | grep -v "^> Task" | head -60 | cut -c1-220 | while IFS= read -r line; do
             echo "::error ::$line"
           done
 
