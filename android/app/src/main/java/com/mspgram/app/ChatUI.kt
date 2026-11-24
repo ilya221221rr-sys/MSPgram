@@ -683,8 +683,7 @@ fun ChatScreen(me: Profile, chatId: String, onBack: () -> Unit) {
             },
             onForward = { forwardMsg = mm; menuMsg = null },
             onCopy = {
-                val cm = androidx.compose.ui.platform.LocalClipboardManager.current
-                cm.setText(androidx.compose.ui.text.AnnotatedString(mm.body ?: mm.attachment_url ?: ""))
+                clipboard.setText(androidx.compose.ui.text.AnnotatedString(mm.body ?: mm.attachment_url ?: ""))
                 Calls.toastMsg("Скопировано ✓")
                 menuMsg = null
             },
@@ -1197,21 +1196,21 @@ class VoiceRecorder(private val ctx: android.content.Context) {
 fun linkifyAnnotated(text: String): androidx.compose.ui.text.AnnotatedString {
     val meNick = (Supa.me?.nickname ?: "").lowercase()
     val sb = androidx.compose.ui.text.AnnotatedString.Builder()
-    val re = Regex("(https?://[^\\s]+[^\\s.,:;\"')\\]!?])|(@[\\p{L}\\p{N}_]{3,20})")
+    val re = Regex("(https?://[^\\s]+[^\\s.,:;\")'\\]!?])|(@[\\p{L}\\p{N}_]{3,20})")
     var last = 0
     for (mm in re.findAll(text)) {
         sb.append(text.substring(last, mm.range.first))
         val token = mm.value
         if (token.startsWith("http")) {
-            sb.pushLink(
-                androidx.compose.ui.text.link.LinkAnnotation.Url(
-                    token,
-                    androidx.compose.ui.text.TextLinkStyles(
-                        androidx.compose.ui.text.SpanStyle(color = Color(0xFFA8C6FF), textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline),
-                    ),
+            sb.pushStringAnnotation("URL", token)
+            sb.pushStyle(
+                androidx.compose.ui.text.SpanStyle(
+                    color = Color(0xFFA8C6FF),
+                    textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline,
                 ),
             )
             sb.append(token)
+            sb.pop()
             sb.pop()
         } else {
             val isMe = token.substring(1).lowercase() == meNick
@@ -1231,11 +1230,31 @@ fun linkifyAnnotated(text: String): androidx.compose.ui.text.AnnotatedString {
     return sb.toAnnotatedString()
 }
 
+// текст с кликабельными ссылками и упоминаниями
+@Composable
+fun LinkifiedText(text: String, scale: Float = 1f, color: Color = Color.White) {
+    val ctx = LocalContext.current
+    val annotated = androidx.compose.runtime.remember(text) { linkifyAnnotated(text) }
+    androidx.compose.foundation.text.ClickableText(
+        annotated,
+        style = androidx.compose.ui.text.TextStyle(
+            color = color,
+            fontSize = (15 * scale).sp,
+            lineHeight = (15 * scale * 1.45f).sp,
+        ),
+        onClick = { offset ->
+            annotated.getStringAnnotations("URL", offset, offset).firstOrNull()?.let { a ->
+                runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(a.item))) }
+            }
+        },
+    )
+}
+
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun SpoilerText(text: String, scale: Float = 1f) {
     if (!text.contains("||")) {
-        Text(linkifyAnnotated(text), fontSize = (15 * scale).sp)
+        LinkifiedText(text, scale)
         return
     }
     val parts = text.split("||")
@@ -1250,13 +1269,14 @@ fun SpoilerText(text: String, scale: Float = 1f) {
                     shape = RoundedCornerShape(6.dp),
                 ) {
                     Text(
-                        linkifyAnnotated(if (revealed) part else part.map { '█' }.joinToString("")),
+                        if (revealed) linkifyAnnotated(part) else part.map { '█' }.joinToString(""),
+                        color = if (revealed) Color.White else Color.Transparent,
                         fontSize = (15 * scale).sp,
                         modifier = Modifier.clickable { revealed = true }.padding(horizontal = 5.dp, vertical = 1.dp),
                     )
                 }
             } else {
-                Text(linkifyAnnotated(part), fontSize = (15 * scale).sp)
+                LinkifiedText(part, scale)
             }
         }
     }

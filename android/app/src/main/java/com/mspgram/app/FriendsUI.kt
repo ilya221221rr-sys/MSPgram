@@ -11,6 +11,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -295,7 +296,7 @@ fun ProfileSheetView(me: Profile, onOpenChat: (String) -> Unit) {
 
         }
 
-    prof?.let { pr -> if (qrOpen) QrDialog(pr, onClose = { qrOpen = false }) }
+    p?.let { pr -> if (qrOpen) QrDialog(pr, onClose = { qrOpen = false }) }
 
     if (reportOpen) {
         var reason by remember { mutableStateOf("") }
@@ -348,12 +349,10 @@ fun QrDialog(prof: Profile, onClose: () -> Unit) {
         text = {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 if (bitmap != null) {
-                    androidx.compose.ui.graphics.asImageBitmap(bitmap).let {
-                        androidx.compose.foundation.Image(
-                            it, contentDescription = "QR",
-                            modifier = Modifier.size(220.dp).background(Color.White, RoundedCornerShape(12.dp)).padding(8.dp),
-                        )
-                    }
+                    androidx.compose.foundation.Image(
+                        bitmap.asImageBitmap(), contentDescription = "QR",
+                        modifier = Modifier.size(220.dp).background(Color.White, RoundedCornerShape(12.dp)).padding(8.dp),
+                    )
                 }
                 Spacer(Modifier.size(8.dp))
                 Text(
