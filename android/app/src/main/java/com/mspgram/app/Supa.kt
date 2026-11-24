@@ -133,7 +133,7 @@ object Supa {
         if (ar.access_token != null) {
             save(Session(ar.access_token, ar.refresh_token ?: "", System.currentTimeMillis() + ar.expires_in * 1000), uid)
             // у пользователя включена 2FA? → запросить код (как mfa.listFactors после signInWithPassword)
-            val fr = reqRaw("GET", "/auth/v1/mfa/factors")
+            val fr = reqRaw("GET", "/auth/v1/mfa/factors", null)
             if (fr.code == 200) {
                 val factors = runCatching { json.decodeFromString<List<MfaFactor>>(fr.body) }.getOrDefault(emptyList())
                 if (factors.any { it.status == "verified" && it.factor_type == "totp" }) {
@@ -147,7 +147,7 @@ object Supa {
 
     // подтвердить вход кодом 2FA (challengeAndVerify)
     suspend fun mfaVerifyCode(code: String) {
-        val fr = reqRaw("GET", "/auth/v1/mfa/factors")
+        val fr = reqRaw("GET", "/auth/v1/mfa/factors", null)
         if (fr.code != 200) throw Exception("Не удалось получить факторы 2FA")
         val factors = json.decodeFromString<List<MfaFactor>>(fr.body)
         val factor = factors.firstOrNull { it.status == "verified" && it.factor_type == "totp" }
@@ -269,7 +269,7 @@ object Supa {
 
     // сообщение из любого места истории (jumpToMessage.findMessageAnywhere)
     suspend fun findMessage(chatId: String, msgId: String): Message? {
-        val r = runCatching { get("/rest/v1/messages?select=*&id=eq.$msgId&chat_id=eq.$chatId") }
+        val r = runCatching { get("/rest/v1/messages?select=*&id=eq.$msgId&chat_id=eq.$chatId") }.getOrDefault("")
         val list = runCatching { json.decodeFromString<List<Message>>(r) }.getOrDefault(emptyList())
         return list.firstOrNull()
     }

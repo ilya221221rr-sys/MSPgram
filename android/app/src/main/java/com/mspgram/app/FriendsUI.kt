@@ -327,6 +327,7 @@ fun ProfileSheetView(me: Profile, onOpenChat: (String) -> Unit) {
 @Composable
 fun QrDialog(prof: Profile, onClose: () -> Unit) {
     val ctx = androidx.compose.ui.platform.LocalContext.current
+    val cm = androidx.compose.ui.platform.LocalClipboardManager.current
     val link = remember(prof.id) { "https://ilya221221rr-sys.github.io/MSPgram/?add=${prof.id}" }
     val bitmap = remember(prof.id) {
         runCatching {
@@ -358,7 +359,6 @@ fun QrDialog(prof: Profile, onClose: () -> Unit) {
                 Text(
                     link, color = MutedText, fontSize = 11.sp,
                     modifier = Modifier.clickable {
-                        val cm = androidx.compose.ui.platform.LocalClipboardManager.current
                         cm.setText(androidx.compose.ui.text.AnnotatedString(link))
                         Calls.toastMsg("Ссылка скопирована")
                     },
