@@ -337,6 +337,7 @@ fun MainScreen(me: Profile, jumpChat: String?, onLogout: () -> Unit) {
         reloadAnnouncement()
         Realtime.join("msp-online")
         Supa.registerSession("Android")
+        runCatching { Supa.touchLastSeen() }
         Supa.markDelivered()
         startSessionHeartbeat()
         // уведомления: запрос разрешения из композиции (в RESUMED нельзя)
