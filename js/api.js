@@ -40,7 +40,12 @@ export function initClient(cfg) {
     auth: {
       persistSession: true,
       autoRefreshToken: true,
-      detectSessionInUrl: false,
+      // ссылки из писем (восстановление пароля, подтверждение почты) несут
+      // токен в #hash — клиент должен сам забрать сессию из URL и отдать
+      // событие PASSWORD_RECOVERY (без этого updateUser падает
+      // с «Auth session missing!»)
+      detectSessionInUrl: true,
+      flowType: 'implicit',
     },
   });
   return _sb;
@@ -53,7 +58,9 @@ export const authApi = {
     return data.session || null;
   },
   onAuth(cb) {
-    const { data } = _sb.auth.onAuthStateChange((_event, session) => cb(session));
+    // подписка gotrue: (event, session) — наружу отдаём (session, event),
+    // как ожидает app.js
+    const { data } = _sb.auth.onAuthStateChange((event, session) => cb(session, event));
     return data.subscription;
   },
   async signUp(email, password, nickname, displayName) {

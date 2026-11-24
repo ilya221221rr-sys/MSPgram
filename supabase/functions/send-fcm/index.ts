@@ -86,7 +86,7 @@ async function getAccessToken(): Promise<string> {
   return cachedToken.token;
 }
 
-async function fcmSend(projectId: string, token: string, payload: Record<string, unknown>): Promise<boolean> {
+async function fcmSend(projectId: string, token: string, payload: Record<string, unknown>): Promise<{ ok: boolean; dead: boolean }> {
   const access = await getAccessToken();
   const resp = await fetch(`https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`, {
     method: 'POST',
@@ -96,8 +96,23 @@ async function fcmSend(projectId: string, token: string, payload: Record<string,
     },
     body: JSON.stringify({ message: { token, ...payload } }),
   });
-  if (!resp.ok) console.error('FCM error', resp.status, await resp.text());
-  return resp.ok;
+  if (!resp.ok) {
+    const errText = await resp.text();
+    console.error('FCM error', resp.status, errText);
+    // токен больше не существует (приложение удалено/заменено) → чистим из базы
+    const dead = resp.status === 404 || errText.includes('UNREGISTERED') || errText.includes('registered');
+    return { ok: false, dead };
+  }
+  return { ok: true, dead: false };
+}
+
+// удалить мёртвые токены (security definer не нужен — service role)
+async function purgeDead(tokens: Array<{ token: string }>, results: Array<{ ok: boolean; dead: boolean }>) {
+  const deadTokens = tokens.filter((_, i) => results[i]?.dead).map((t) => t.token);
+  if (deadTokens.length) {
+    await admin.from('fcm_tokens').delete().in('token', deadTokens);
+    console.log('purged dead tokens:', deadTokens.length);
+  }
 }
 
 Deno.serve(async (req) => {
@@ -154,9 +169,11 @@ Deno.serve(async (req) => {
         android: { priority: 'HIGH', ttl: '30s' },
       };
       let sent = 0;
-      await Promise.all(tokens.map(async (t: { token: string }) => {
-        try { if (await fcmSend(projectId, t.token, payload)) sent++; } catch { /* устройство не должно ронять остальные */ }
+      const results = await Promise.all(tokens.map(async (t: { token: string }) => {
+        try { return await fcmSend(projectId, t.token, payload); } catch { return { ok: false, dead: false }; }
       }));
+      results.forEach((r) => { if (r.ok) sent++; });
+      await purgeDead(tokens, results);
       return json({ sent, devices: tokens.length });
     } catch (e) {
       return json({ error: (e as Error).message }, 500);
@@ -173,7 +190,16 @@ Deno.serve(async (req) => {
       const { data: msg, error: e1 } = await admin.from('messages')
         .select('id, chat_id, sender_id, body, attachment_type, created_at')
         .eq('id', body.message_id).maybeSingle();
-      if (e1 || !msg) return json({ error: 'message not found' }, 404);
+      if (e1 || !msg) {
+        // диагностика: сколько строк видит функция вообще и что за ошибка
+        const { count, error: e2 } = await admin.from('messages').select('id', { count: 'exact', head: true });
+        return json({
+          error: 'message not found',
+          detail: e1 ? String(e1.message) : 'row missing',
+          visibleRows: count ?? -1,
+          countErr: e2 ? String(e2.message) : null,
+        }, 404);
+      }
 
       const { data: members } = await admin.from('chat_members')
         .select('user_id, muted').eq('chat_id', msg.chat_id).neq('user_id', msg.sender_id);
@@ -207,9 +233,11 @@ Deno.serve(async (req) => {
       };
 
       let sent = 0;
-      await Promise.all(tokens.map(async (t: { token: string }) => {
-        try { if (await fcmSend(projectId, t.token, payload)) sent++; } catch { /* одно устройство не должно ронять остальные */ }
+      const results = await Promise.all(tokens.map(async (t: { token: string }) => {
+        try { return await fcmSend(projectId, t.token, payload); } catch { return { ok: false, dead: false }; }
       }));
+      results.forEach((r) => { if (r.ok) sent++; });
+      await purgeDead(tokens, results);
       return json({ sent, devices: tokens.length });
     }
 
