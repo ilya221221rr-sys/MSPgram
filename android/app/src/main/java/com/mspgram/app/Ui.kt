@@ -47,42 +47,52 @@ val WALLS = listOf(
     "mint" to "Мята", "doodle" to "Узор", "stars" to "Звёзды", "grid" to "Сетка",
 )
 
-fun skinBg(name: String): Color = when (name) {
-    "amoled" -> Color(0xFF000000)
-    "midnight" -> Color(0xFF0A1628)
-    "graphite" -> Color(0xFF16181D)
-    "plum" -> Color(0xFF140D1F)
-    "forest" -> Color(0xFF0A1713)
-    else -> Color(0xFF0B1020)
+// палитра скина: bg / panel / panel2 / hover / line / in — ТОЧНЫЕ значения css/v19.css
+data class SkinPalette(val bg: Color, val panel: Color, val panel2: Color, val hover: Color, val line: Color, val bubbleIn: Color, val accent: Color)
+
+fun skinPalette(name: String): SkinPalette = when (name) {
+    "amoled" -> SkinPalette(Color(0xFF000000), Color(0xFF0A0A0C), Color(0xFF141418), Color(0xFF1A1A20), Color(0xFF212127), Color(0xFF15151A), Color(0xFF7C5BFF))
+    "midnight" -> SkinPalette(Color(0xFF07101F), Color(0xFF0B1B30), Color(0xFF112440), Color(0xFF163052), Color(0xFF1A3355), Color(0xFF12294A), Color(0xFF38BDF8))
+    "graphite" -> SkinPalette(Color(0xFF101216), Color(0xFF16181D), Color(0xFF1E2128), Color(0xFF262A33), Color(0xFF2A2E38), Color(0xFF1F232B), Color(0xFF34D399))
+    "plum" -> SkinPalette(Color(0xFF0F0A18), Color(0xFF170F26), Color(0xFF21153A), Color(0xFF2A1B49), Color(0xFF33225A), Color(0xFF25173F), Color(0xFFE879F9))
+    "forest" -> SkinPalette(Color(0xFF07120E), Color(0xFF0C1B16), Color(0xFF12291F), Color(0xFF173828), Color(0xFF1C4030), Color(0xFF12281F), Color(0xFF4ADE80))
+    else -> SkinPalette(Color(0xFF0B1020), Color(0xFF111827), Color(0xFF18203A), Color(0xFF1D2745), Color(0xFF232E4E), Color(0xFF1A2340), Color(0xFF5B8CFF)) // nova = style.css :root
 }
 
-fun skinAccent(name: String): Color = when (name) {
-    "amoled" -> Color(0xFF7C5BFF)
-    "midnight" -> Color(0xFF38BDF8)
-    "graphite" -> Color(0xFF34D399)
-    "plum" -> Color(0xFFE879F9)
-    "forest" -> Color(0xFF4ADE80)
-    else -> Color(0xFF5B8CFF)
-}
+// совместимость со старыми вызовами (SettingsUI-превью)
+fun skinBg(name: String): Color = skinPalette(name).bg
+fun skinAccent(name: String): Color = skinPalette(name).accent
 
 // динамическая тема: обновляется refreshTheme() при смене скина
 object ThemeState { val version = androidx.compose.runtime.mutableStateOf(0) }
 
-val Accent = Color(0xFF5B8CFF)
-var DarkBg = Color(0xFF0B1020)
-var DarkSurface = Color(0xFF141927)
-var DarkSurface2 = Color(0xFF1C2230)
-val MutedText = Color(0xFF8A93A6)
-val DangerColor = Color(0xFFE5484D)
-val OkColor = Color(0xFF46C26E)
-val Accent2 = Color(0xFF7C5BFF)
+val Accent = Color(0xFF5B8CFF)        // --accent nova
+var DarkBg = Color(0xFF0B1020)        // --bg
+var DarkSurface = Color(0xFF111827)   // --panel
+var DarkSurface2 = Color(0xFF18203A)  // --panel2
+var HoverC = Color(0xFF1D2745)        // --hover
+var LineC = Color(0xFF232E4E)         // --line
+var InBubble = Color(0xFF1A2340)      // --in (чужие пузыри)
+val TextC = Color(0xFFE8EDF8)         // --text
+val MutedText = Color(0xFF8F9AB8)     // --muted
+val DangerColor = Color(0xFFE5484D)   // --danger
+val OkColor = Color(0xFF3DD68C)       // --ok
+val Accent2 = Color(0xFF7C5BFF)       // --accent2
+val RailBg = Color(0xFF070B16)        // фон сервер-рейла
+
+// пузырь своих: --out = linear-gradient(135deg,#3e63dd,#4d43d8); хвост #4d43d8
+fun outBubbleBrush(): androidx.compose.ui.graphics.Brush =
+    androidx.compose.ui.graphics.Brush.linearGradient(listOf(Color(0xFF3E63DD), Color(0xFF4D43D8)))
+const val OUT_TAIL = 0xFF4D43D8
 
 fun refreshTheme() {
-    val skin = Prefs.get().skin
-    val bg = skinBg(skin)
-    DarkBg = bg
-    DarkSurface = androidx.compose.ui.graphics.lerp(bg, Color.White, 0.07f)
-    DarkSurface2 = androidx.compose.ui.graphics.lerp(bg, Color.White, 0.12f)
+    val pal = skinPalette(Prefs.get().skin)
+    DarkBg = pal.bg
+    DarkSurface = pal.panel
+    DarkSurface2 = pal.panel2
+    HoverC = pal.hover
+    LineC = pal.line
+    InBubble = pal.bubbleIn
     ThemeState.version.value++
 }
 
