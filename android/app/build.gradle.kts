@@ -53,6 +53,15 @@ dependencies {
     // фото в чатах
     implementation("io.coil-kt:coil-compose:2.7.0")
 
+    // звонки (WebRTC) — тот же артефакт, что используют все Android-приложения
+    implementation("org.webrtc:google-webrtc:1.0.32006")
+
+    // видео-кружки (запись камерой, как circles.js на сайте)
+    implementation("androidx.camera:camera-video:1.3.4")
+    implementation("androidx.camera:camera-camera2:1.3.4")
+    implementation("androidx.camera:camera-lifecycle:1.3.4")
+    implementation("androidx.camera:camera-view:1.3.4")
+
     // Push при закрытом приложении (настраивается без google-services.json, вручную)
     implementation("com.google.firebase:firebase-messaging:24.0.1")
 }

@@ -17,26 +17,20 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Button
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -45,57 +39,41 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.google.firebase.messaging.FirebaseMessaging
-import java.text.SimpleDateFormat
-import java.util.Locale
+import kotlinx.serialization.encodeToString
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 // ============================================================
-//  MSPgram — нативный клиент (Jetpack Compose)
-//  Экраны: вход → список чатов → чат
+//  MSPgram Android — точка входа. Все функции веб-версии.
 // ============================================================
-
-val Accent = Color(0xFF5B8CFF)
-val Accent2 = Color(0xFF7C5BFF)
-val DarkBg = Color(0xFF0D1220)
-val DarkSurface = Color(0xFF151A26)
-val MutedText = Color(0xFF8A93A6)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Supa.init(this)
+        Prefs.init(this)
+        Calls.init(this)
         val jumpChat = intent?.getStringExtra("chatId")
-        setContent { MspTheme { Root(jumpChat) } }
+        setContent {
+            MspTheme {
+                Root(jumpChat)
+            }
+        }
     }
-}
-
-@Composable
-fun MspTheme(content: @Composable () -> Unit) {
-    MaterialTheme(
-        colorScheme = darkColorScheme(
-            primary = Accent,
-            secondary = Accent2,
-            background = DarkBg,
-            surface = DarkSurface,
-        ),
-        content = content,
-    )
 }
 
 @Composable
 fun Root(jumpChat: String?) {
     var loading by remember { mutableStateOf(true) }
     var me by remember { mutableStateOf<Profile?>(null) }
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
         Supa.restore()
@@ -105,13 +83,13 @@ fun Root(jumpChat: String?) {
 
     if (loading) {
         Box(Modifier.fillMaxSize().background(DarkBg), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator(color = Accent)
+            CircularProgressIndicator(color = accentColor(Prefs.get().accent))
         }
     } else if (me == null) {
         LoginScreen(onEnter = { me = Supa.me })
     } else {
-        AppUi(me!!, jumpChat, onLogout = {
-            Supa.logout()
+        MainScreen(me!!, jumpChat, onLogout = {
+            scope.launch { Supa.logout() }
             me = null
         })
     }
@@ -134,10 +112,9 @@ fun LoginScreen(onEnter: () -> Unit) {
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text("MSPgram", fontSize = 34.sp, fontWeight = FontWeight.Bold, color = Accent)
-        Text("Нативное приложение", fontSize = 13.sp, color = MutedText)
+        Text("MSPgram", fontSize = 34.sp, fontWeight = FontWeight.Bold, color = accentColor(Prefs.get().accent))
+        Text("Нативный мессенджер", fontSize = 13.sp, color = MutedText)
         Spacer(Modifier.size(28.dp))
-
         if (mode == "signup") {
             OutlinedTextField(
                 value = nick, onValueChange = { nick = it },
@@ -146,39 +123,26 @@ fun LoginScreen(onEnter: () -> Unit) {
             )
             Spacer(Modifier.size(10.dp))
         }
-        OutlinedTextField(
-            value = email, onValueChange = { email = it },
-            label = { Text("Email") }, singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
+        OutlinedTextField(value = email, onValueChange = { email = it }, label = { Text("Email") }, singleLine = true, modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.size(10.dp))
-        OutlinedTextField(
-            value = pass, onValueChange = { pass = it },
-            label = { Text("Пароль") }, singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
+        OutlinedTextField(value = pass, onValueChange = { pass = it }, label = { Text("Пароль") }, singleLine = true, modifier = Modifier.fillMaxWidth())
         if (err.isNotEmpty()) {
             Spacer(Modifier.size(10.dp))
-            Text(err, color = Color(0xFFE5484D), fontSize = 13.sp)
+            Text(err, color = DangerColor, fontSize = 13.sp)
         }
         Spacer(Modifier.size(18.dp))
         if (busy) {
-            CircularProgressIndicator(color = Accent)
+            CircularProgressIndicator(color = accentColor(Prefs.get().accent))
         } else {
             Button(
                 onClick = {
                     busy = true; err = ""
                     scope.launch {
                         try {
-                            if (mode == "login") {
-                                Supa.signIn(email.trim(), pass)
-                            } else {
-                                Supa.signUp(email.trim(), pass, nick.trim())
-                            }
+                            if (mode == "login") Supa.signIn(email.trim(), pass)
+                            else Supa.signUp(email.trim(), pass, nick.trim())
                             onEnter()
-                        } catch (e: Exception) {
-                            err = e.message ?: "Ошибка"
-                        }
+                        } catch (e: Exception) { err = e.message ?: "Ошибка" }
                         busy = false
                     }
                 },
@@ -191,321 +155,284 @@ fun LoginScreen(onEnter: () -> Unit) {
     }
 }
 
-// ---------- ОСНОВНОЙ ЭКРАН ----------
+// ---------- ГЛАВНЫЙ ЭКРАН: нижняя навигация ----------
 
 @Composable
-fun AppUi(me: Profile, jumpChat: String?, onLogout: () -> Unit) {
-    var openChatId by remember { mutableStateOf<String?>(jumpChat) }
-
-    LaunchedEffect(Unit) { Supa.connectRealtime() }
-
-    // разрешение на уведомления (Android 13+) + регистрация FCM-токена
-    val ctx = LocalContext.current
-    val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) registerFcmToken()
-    }
-    LaunchedEffect(Unit) {
-        if (Build.VERSION.SDK_INT >= 33) {
-            if (ctx.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                permLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-            } else {
-                registerFcmToken()
-            }
-        } else {
-            registerFcmToken()
-        }
-    }
-
-    val chat = openChatId
-    if (chat == null) ChatsScreen(me, onOpen = { openChatId = it }, onLogout = onLogout)
-    else ChatScreen(me, chat, onBack = { openChatId = null })
-}
-
-private fun registerFcmToken() {
-    try {
-        FirebaseMessaging.getInstance().token.addOnSuccessListener { t ->
-            CoroutineScope(Dispatchers.IO).launch { Supa.registerFcm(t) }
-        }
-    } catch (_: Exception) { /* Firebase не настроен — без push */ }
-}
-
-// ---------- СПИСОК ЧАТОВ ----------
-
-@Composable
-fun ChatsScreen(me: Profile, onOpen: (String) -> Unit, onLogout: () -> Unit) {
-    var chats by remember { mutableStateOf<List<Chat>>(emptyList()) }
-    var unread by remember { mutableStateOf<Map<String, Long>>(emptyMap()) }
-    var err by remember { mutableStateOf("") }
+fun MainScreen(me: Profile, jumpChat: String?, onLogout: () -> Unit) {
     val scope = rememberCoroutineScope()
+    val ctx = androidx.compose.ui.platform.LocalContext.current
 
-    suspend fun reload() {
-        try {
-            chats = Supa.loadChats().sortedByDescending { it.last_message_at ?: "" }
-            unread = Supa.unreadCounts()
-            err = ""
-        } catch (e: Exception) {
-            err = e.message ?: "Ошибка сети"
+    // таб: 0 чаты, 1 друзья, 2 AI, 3 настройки (как панели сайта)
+    var tab by remember { mutableStateOf(0) }
+    var openChatId by remember { mutableStateOf<String?>(jumpChat) }
+    var adminOpen by remember { mutableStateOf(false) }
+    var announcement by remember { mutableStateOf<Announcement?>(null) }
+    val connected by Realtime.connected.collectAsState()
+
+    fun reloadAnnouncement() {
+        scope.launch {
+            try {
+                val dismissed = try {
+                    kotlinx.serialization.json.Json.decodeFromString<List<String>>(Prefs.get().annDismissed)
+                } catch (_: Exception) { emptyList() }
+                announcement = Supa.loadAnnouncements().firstOrNull { it.id !in dismissed }
+            } catch (_: Exception) { }
         }
     }
 
-    LaunchedEffect(Unit) { reload() }
-    LaunchedEffect(Unit) {
-        Supa.events.collect { reload() }
+    // ---------- глобальная инициализация ----------
+    val notifPerm = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) registerFcm(ctx)
     }
 
-    Scaffold(
-        containerColor = DarkBg,
-        topBar = {
-            Row(
-                Modifier.fillMaxWidth().background(DarkSurface).padding(horizontal = 16.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Avatar(me.name, 36.dp)
-                Spacer(Modifier.width(10.dp))
-                Column {
-                    Text("MSPgram", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                    Text("@${me.nickname}", color = MutedText, fontSize = 11.sp)
+    LaunchedEffect(Unit) {
+        Supa.loadChats()
+        Supa.loadFriends()
+        Supa.loadMyBlocks()
+        Realtime.connect(Supa.KEY, Supa.URL)
+        Realtime.join(
+            "realtime:msp-db",
+            """[{"event":"*","schema":"public","table":"messages"},{"event":"*","schema":"public","table":"reactions"},{"event":"*","schema":"public","table":"chats"},{"event":"*","schema":"public","table":"chat_members"},{"event":"*","schema":"public","table":"friendships"},{"event":"*","schema":"public","table":"user_sessions"},{"event":"*","schema":"public","table":"app_announcements"}]""",
+        )
+        reloadAnnouncement()
+        Realtime.join("msp-online")
+        Realtime.presenceTrack(Supa.userId ?: "", Supa.me?.presence_status ?: "online")
+        Supa.registerSession("Android")
+        Supa.markDelivered()
+        startSessionHeartbeat()
+        // уведомления: запрос разрешения из композиции (в RESUMED нельзя)
+        Notifs.ensureChannels(ctx)
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ctx.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) notifPerm.launch(Manifest.permission.POST_NOTIFICATIONS)
+        else registerFcm(ctx)
+    }
+
+    // ---------- realtime: база ----------
+    LaunchedEffect(Unit) {
+        Realtime.db.collect { ev ->
+            when (ev.table) {
+                "messages" -> {
+                    try {
+                        val m = Supa.json.decodeFromJsonElement(Message.serializer(), ev.record)
+                        val c = Supa.chatById(m.chat_id)
+                        if (ev.event == "INSERT") {
+                            ChatSession.onNewMessage(m)
+                            val mine = m.sender_id == Supa.userId
+                            if (openChatId != m.chat_id) {
+                                Supa.unread[m.chat_id] = (Supa.unread[m.chat_id] ?: 0L) + 1
+                                if (!mine && Prefs.get().sound && c?.myFlags(Supa.userId ?: "")?.muted != true) {
+                                    beep()
+                                    val from = c?.members?.firstOrNull { it.user_id == m.sender_id }?.profiles?.name
+                                    Notifs.push(ctx, from ?: "Новое сообщение", m.body ?: previewOf(m), m.chat_id)
+                                }
+                            } else {
+                                Supa.markRead(m.chat_id)
+                            }
+                            c?.let { cc ->
+                                Supa.chats = Supa.chats.map { x ->
+                                    if (x.id == cc.id) x.copy(last_message_at = m.created_at, last_message_text = previewOf(m), last_message_sender = m.sender_id)
+                                    else x
+                                }
+                            }
+                            Supa.chatListVersion.value++
+                        } else if (ev.event == "UPDATE") {
+                            ChatSession.onEditMessage(m)
+                        } else if (ev.event == "DELETE") {
+                            ChatSession.onDeleteMessage(m.id)
+                        }
+                    } catch (_: Exception) { }
                 }
-                Spacer(Modifier.weight(1f))
-                TextButton(onClick = onLogout) { Text("Выйти", color = MutedText) }
-            }
-        },
-    ) { pad ->
-        Column(Modifier.padding(pad).fillMaxSize().background(DarkBg)) {
-            if (err.isNotEmpty()) {
-                Text(
-                    err, color = Color(0xFFE5484D), fontSize = 12.sp,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
-                )
-            }
-            LazyColumn(Modifier.fillMaxSize()) {
-                items(chats) { c ->
-                    ChatRow(me.id, c, unread[c.id] ?: 0) { onOpen(c.id) }
+                "reactions" -> {
+                    try {
+                        val r = Supa.json.decodeFromJsonElement(ReactionRow.serializer(), ev.record)
+                        val list = Supa.reactions.getOrPut(r.message_id) { mutableListOf() }
+                        if (ev.event == "INSERT") {
+                            if (list.none { it.user_id == r.user_id && it.emoji == r.emoji }) list.add(r)
+                            Notifs.onReaction(r)
+                        } else {
+                            list.removeAll { it.user_id == r.user_id && it.emoji == r.emoji }
+                        }
+                        ChatSession.bumpReactions()
+                    } catch (_: Exception) { }
                 }
-                if (chats.isEmpty()) {
-                    item {
-                        Text(
-                            "Пока пусто.\nНайди друзей через поиск в веб-версии —\nздесь появятся все твои чаты.",
-                            color = MutedText, fontSize = 14.sp,
-                            modifier = Modifier.padding(24.dp),
-                        )
+                "chats" -> {
+                    if (ev.event == "UPDATE") {
+                        try {
+                            val row = Supa.json.decodeFromJsonElement(Chat.serializer(), ev.record)
+                            Supa.chats = Supa.chats.map { if (it.id == row.id) it.copy(pinned_message_id = row.pinned_message_id, only_admins_post = row.only_admins_post, allow_media = row.allow_media, title = row.title) else it }
+                            Supa.chatListVersion.value++
+                        } catch (_: Exception) { }
+                    } else if (ev.event == "INSERT") {
+                        scope.launch { Supa.loadChats() }
+                    } else if (ev.event == "DELETE") {
+                        scope.launch { Supa.loadChats() }
+                    }
+                }
+                "chat_members" -> {
+                    scope.launch { Supa.loadChats() }
+                }
+                "app_announcements" -> {
+                    reloadAnnouncement()
+                    if (ev.event == "INSERT") {
+                        val title = ev.record.str("title")
+                        val body = ev.record.str("body") ?: ""
+                        val createdBy = ev.record.str("created_by")
+                        if (createdBy != Supa.userId) Notifs.push(ctx, "📣 $title", body)
+                    }
+                }
+                "friendships" -> {
+                    scope.launch {
+                        Supa.loadFriends()
+                        if (ev.event == "INSERT") {
+                            val addressee = ev.record.str("addressee") ?: return@launch
+                            if (addressee == Supa.userId) {
+                                val requester = ev.record.str("requester") ?: return@launch
+                                val prof = runCatching { Supa.loadProfile(requester) }.getOrNull()
+                                Notifs.push(ctx, "${prof?.name ?: "Кто-то"} хочет дружить", "Открой «Друзья», чтобы принять заявку")
+                            }
+                        }
+                    }
+                }
+                "user_sessions" -> {
+                    if (ev.event == "UPDATE") {
+                        val id = ev.record.str("id")
+                        val revoked = (ev.record["revoked"] as? kotlinx.serialization.json.JsonPrimitive)?.contentOrNull == "true"
+                        if (revoked && id == Supa.sid) { Supa.logout(); onLogout() }
                     }
                 }
             }
         }
     }
-}
 
-@Composable
-fun Avatar(name: String, dpSize: Dp) {
-    Box(
-        Modifier.size(dpSize).background(Brush.linearGradient(listOf(Accent, Accent2)), CircleShape),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(name.take(1).uppercase(), color = Color.White, fontWeight = FontWeight.Bold)
-    }
-}
-
-@Composable
-fun ChatRow(meId: String, chat: Chat, unreadCnt: Long, onClick: () -> Unit) {
-    val title = chat.titleFor(meId)
-    val preview = chat.last_message_text ?: "Напиши первое сообщение"
-
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .background(DarkBg)
-            .clickable { onClick() }
-            .padding(horizontal = 14.dp, vertical = 9.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Avatar(title.removePrefix("🔖 ").trim(), 48.dp)
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
-            Text(title, color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
-            Text(preview, color = MutedText, fontSize = 13.sp, maxLines = 1)
-        }
-        if (unreadCnt > 0) {
-            Box(
-                Modifier.size(22.dp).background(Accent, CircleShape),
-                contentAlignment = Alignment.Center,
-            ) { Text("$unreadCnt", color = Color.White, fontSize = 11.sp) }
-        }
-    }
-}
-
-// ---------- ЧАТ ----------
-
-@Composable
-fun ChatScreen(me: Profile, chatId: String, onBack: () -> Unit) {
-    var chat by remember { mutableStateOf<Chat?>(null) }
-    var channel by remember { mutableStateOf<Channel?>(null) }
-    var msgs by remember { mutableStateOf<List<Message>>(emptyList()) }
-    var input by remember { mutableStateOf("") }
-    var err by remember { mutableStateOf("") }
-    var busy by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
-    val ctx = LocalContext.current
-
-    val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        if (uri != null) {
-            scope.launch {
-                busy = true; err = ""
-                try {
-                    val bytes = ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                        ?: throw Exception("Не удалось прочитать файл")
-                    val (url, size) = Supa.uploadImage(chatId, bytes, "photo.jpg")
-                    val m = Supa.sendMessageFull(chatId, channel?.id, null, "image", url, "Фото", size)
-                    if (msgs.none { it.id == m.id }) msgs = msgs + m
-                } catch (e: Exception) {
-                    err = e.message ?: "Ошибка отправки"
+    // ---------- realtime: broadcast (звонки, голосовые, typing) ----------
+    LaunchedEffect(Unit) {
+        Realtime.broadcast.collect { b ->
+            when {
+                b.topic.startsWith("call-") -> Calls.handleCallBroadcast(b)
+                b.topic.startsWith("voice-") -> Calls.handleVoiceBroadcast(b)
+                b.topic.startsWith("typing-") -> {
+                    val chatId = b.topic.removePrefix("typing-")
+                    val uid = b.payload.str("uid") ?: return@collect
+                    if (uid != Supa.userId) ChatSession.onTyping(chatId, uid, b.payload.str("name") ?: "Кто-то")
                 }
-                busy = false
             }
         }
     }
 
-    LaunchedEffect(chatId) {
-        try {
-            val c = Supa.loadChats().firstOrNull { it.id == chatId }
-            chat = c
-            if (c?.type == "group") channel = Supa.loadChannels(chatId).firstOrNull()
-            msgs = Supa.loadMessages(chatId, channel?.id)
-            Supa.markRead(chatId)
-        } catch (e: Exception) {
-            err = e.message ?: "Ошибка загрузки"
-        }
-    }
-
-    LaunchedEffect(chatId) {
-        Supa.events.collect { (ev, m) ->
-            if (m.chat_id != chatId) return@collect
-            when (ev) {
-                "INSERT" -> {
-                    if (msgs.none { it.id == m.id }) msgs = msgs + m
-                    Supa.markRead(chatId)
-                }
-                "UPDATE" -> msgs = msgs.map { if (it.id == m.id) m else it }
-            }
-        }
-    }
-
-    Scaffold(
-        containerColor = DarkBg,
-        topBar = {
-            Row(
-                Modifier.fillMaxWidth().background(DarkSurface).padding(horizontal = 4.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
+    // ---------- контент ----------
+    Box(Modifier.fillMaxSize().background(DarkBg)) {
+        // объявление от админов (v19: ann-banner)
+        announcement?.let { ann ->
+            val icon = when (ann.level) { "warn" -> "⚠️"; "critical" -> "🛑"; else -> "📣" }
+            Surface(
+                color = when (ann.level) {
+                    "warn" -> Color(0xFFF5B73D).copy(alpha = 0.18f)
+                    "critical" -> DangerColor.copy(alpha = 0.22f)
+                    else -> accentColor(Prefs.get().accent).copy(alpha = 0.18f)
+                },
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp, start = 10.dp, end = 10.dp).fillMaxWidth(),
             ) {
-                TextButton(onClick = onBack) { Text("←", color = Accent, fontSize = 20.sp) }
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        chat?.titleFor(me.id) ?: "Чат",
-                        color = Color.White, fontWeight = FontWeight.Bold,
-                    )
-                    if (channel != null) Text("#${channel!!.name}", color = MutedText, fontSize = 12.sp)
+                Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(icon, fontSize = 16.sp)
+                    Spacer(Modifier.width(8.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(ann.title, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        ann.body?.let { Text(it, color = MutedText, fontSize = 12.sp) }
+                    }
+                    Text("✕", color = MutedText, fontSize = 14.sp, modifier = Modifier.clickable {
+                        val dismissed = try {
+                            kotlinx.serialization.json.Json.decodeFromString<List<String>>(Prefs.get().annDismissed)
+                        } catch (_: Exception) { emptyList() }
+                        Prefs.set(mapOf("annDismissed" to kotlinx.serialization.json.Json.encodeToString((dismissed + ann.id).takeLast(31))))
+                        announcement = null
+                    })
                 }
-                TextButton(onClick = { pickImage.launch("image/*") }) { Text("🖼", fontSize = 18.sp) }
             }
-        },
-    ) { pad ->
-        Column(Modifier.padding(pad).fillMaxSize().background(DarkBg)) {
-            LazyColumn(
-                Modifier.weight(1f).fillMaxWidth().padding(horizontal = 10.dp),
-                reverseLayout = true,
-                verticalArrangement = Arrangement.spacedBy(6.dp),
+        }
+        // «Нет соединения» (v19: net-bar)
+        if (!connected) {
+            Surface(
+                color = Color(0xFFF5B73D).copy(alpha = 0.9f),
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = if (announcement == null) 8.dp else 76.dp),
             ) {
-                items(msgs.reversed()) { m -> MsgRow(me.id, m, chat) }
+                Text("Нет соединения — переподключаемся…", color = Color(0xFF0D1220), fontSize = 12.sp,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp))
             }
-            if (err.isNotEmpty()) {
-                Text(
-                    err, color = Color(0xFFE5484D), fontSize = 12.sp,
-                    modifier = Modifier.padding(horizontal = 12.dp),
-                )
+        }
+        when (tab) {
+            0 -> ChatsScreen(me, onOpen = { openChatId = it })
+            1 -> FriendsScreen(me, onOpenChat = { openChatId = it }, onOpenProfile = { ProfileSheet.open(it) })
+            2 -> AiScreen(me)
+            3 -> SettingsScreen(me, onLogout = onLogout, onOpenAdmin = { adminOpen = true })
+        }
+
+        if (adminOpen && me.is_admin) {
+            AdminScreen(me, onClose = { adminOpen = false }, onOpenChat = { adminOpen = false; openChatId = it })
+        }
+
+        val chat = openChatId
+        if (chat != null) {
+            ChatScreen(me, chat, onBack = { openChatId = null })
+        }
+
+        // звонки поверх всего
+        CallOverlay(me)
+        val inVoice by Calls.state.inVoice.collectAsState()
+        if (inVoice) VoiceBar(me)
+        if (ProfileSheet.visible.value) ProfileSheetView(me, onOpenChat = { openChatId = it })
+
+        // тосты
+        val t = Calls.state.toast.value
+        if (t != null) {
+            LaunchedEffect(t) {
+                kotlinx.coroutines.delay(3500)
+                Calls.state.toast.value = null
             }
-            Row(
-                Modifier.fillMaxWidth().background(DarkSurface).padding(8.dp).imePadding(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                OutlinedTextField(
-                    value = input, onValueChange = { input = it },
-                    placeholder = { Text("Сообщение…", color = MutedText) },
-                    modifier = Modifier.weight(1f),
-                    maxLines = 4,
-                )
-                Spacer(Modifier.width(8.dp))
-                Button(
-                    enabled = input.isNotBlank() && !busy,
-                    onClick = {
-                        val text = input.trim()
-                        input = ""
-                        scope.launch {
-                            busy = true
-                            try {
-                                val m = Supa.sendMessage(chatId, channel?.id, text)
-                                if (msgs.none { it.id == m.id }) msgs = msgs + m
-                            } catch (e: Exception) {
-                                err = e.message ?: "Не отправилось"
-                                input = text
-                            }
-                            busy = false
-                        }
-                    },
-                ) { Text("➤") }
+            Surface(color = DarkSurface2, shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = 30.dp)) {
+                Text(t, color = Color.White, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp))
             }
         }
     }
 }
 
-@Composable
-fun MsgRow(meId: String, m: Message, chat: Chat?) {
-    val own = m.sender_id == meId
-    val sender = chat?.members?.firstOrNull { it.user_id == m.sender_id }?.profiles
-    val time = try {
-        SimpleDateFormat("HH:mm", Locale.getDefault())
-            .format(SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US).parse(m.created_at)!!)
-    } catch (_: Exception) {
-        ""
-    }
-
-    Column(Modifier.fillMaxWidth(), horizontalAlignment = if (own) Alignment.End else Alignment.Start) {
-        if (!own && chat?.type == "group") {
-            Text(
-                sender?.name ?: "Участник",
-                color = Accent, fontSize = 11.sp,
-                modifier = Modifier.padding(horizontal = 12.dp),
-            )
-        }
-        Surface(
-            color = if (own) Accent.copy(alpha = 0.28f) else DarkSurface,
-            shape = RoundedCornerShape(
-                topStart = 16.dp, topEnd = 16.dp,
-                bottomStart = if (own) 16.dp else 4.dp,
-                bottomEnd = if (own) 4.dp else 16.dp,
-            ),
-            modifier = Modifier.widthIn(max = 300.dp),
-        ) {
-            Column(Modifier.padding(horizontal = 12.dp, vertical = 7.dp)) {
-                if (m.attachment_type == "image" && !m.attachment_url.isNullOrEmpty()) {
-                    CoilImage(m.attachment_url!!)
-                }
-                if (!m.body.isNullOrEmpty()) {
-                    Text(m.body!!, color = Color.White, fontSize = 15.sp)
-                }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    if (m.edited_at != null) Text("изм. ", color = MutedText, fontSize = 10.sp)
-                    Text(time, color = MutedText, fontSize = 10.sp)
-                }
-            }
+private fun startSessionHeartbeat() {
+    CoroutineScope(Dispatchers.IO).launch {
+        while (isActive) {
+            kotlinx.coroutines.delay(120_000)
+            try { Supa.pingSession() } catch (_: Exception) { }
         }
     }
 }
 
-@Composable
-fun CoilImage(url: String) {
-    coil.compose.AsyncImage(
-        model = url,
-        contentDescription = "Фото",
-        modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp),
-    )
+private fun registerFcm(ctx: android.content.Context) {
+    try {
+        FirebaseMessaging.getInstance().token.addOnSuccessListener { t ->
+            CoroutineScope(Dispatchers.IO).launch { Supa.registerFcm(t) }
+        }
+    } catch (_: Exception) { }
 }
+
+// «📷 Фото» — как previewOf на сайте
+fun previewOf(m: Message): String {
+    if (!m.body.isNullOrBlank()) return m.body!!
+    return when (m.attachment_type) {
+        "image" -> "📷 Фото"
+        "video" -> "🎥 Видеосообщение"
+        "voice" -> "🎤 Голосовое сообщение"
+        "file" -> "📎 ${m.attachment_name ?: "Файл"}"
+        "sticker" -> "${Stickers.stickerOf(m.attachment_name ?: "").first} Стикер"
+        "gif" -> "GIF"
+        else -> ""
+    }
+}
+
+// json-хелперы payload Realtime (kotlinx JsonObject)
+fun kotlinx.serialization.json.JsonObject.str(key: String): String? =
+    (this[key] as? kotlinx.serialization.json.JsonPrimitive)?.contentOrNull
+
+fun kotlinx.serialization.json.JsonObject.bool(key: String): Boolean? =
+    (this[key] as? kotlinx.serialization.json.JsonPrimitive)?.let { it.contentOrNull == "true" }

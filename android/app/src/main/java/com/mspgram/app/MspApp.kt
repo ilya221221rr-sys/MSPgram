@@ -7,8 +7,10 @@ import org.json.JSONObject
 // Значения берутся из assets/firebase-config.json — их нужно подставить
 // из google-services.json твоего Firebase-проекта (см. НАСТРОЙКА-ANDROID.md).
 class MspApp : Application() {
+    companion object { var instance: Application? = null }
     override fun onCreate() {
         super.onCreate()
+        instance = this
         try {
             val cfg = assets.open("firebase-config.json").bufferedReader().readText()
             val j = JSONObject(cfg)
