@@ -433,22 +433,26 @@ object Supa {
     }
 
     suspend fun uploadAvatar(ctx: Context, uri: android.net.Uri): String {
-        val bytes = ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: throw Exception("Не удалось прочитать файл")
-        val path = "avatars/${userId}-${System.currentTimeMillis()}.jpg"
-        val url = storageUpload(path, bytes, "image/jpeg")
+        val bytes = ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+            ?: throw Exception("Не удалось прочитать файл")
+        val mime = ctx.contentResolver.getType(uri)?.takeIf { it.startsWith("image/") } ?: "image/jpeg"
+        val ext = android.webkit.MimeTypeMap.getSingleton().getExtensionFromMimeType(mime) ?: "jpg"
+        val path = "${userId}/${UUID.randomUUID()}.$ext"
+        val url = storageUpload("avatars", path, bytes, mime)
         updateMe(ProfilePatch(avatar_url = url))
         return url
     }
 
     suspend fun uploadChatFile(chatId: String, bytes: ByteArray, mime: String, name: String): Pair<String, Long> {
         val path = "$chatId/${UUID.randomUUID()}__${name.replace(Regex("[\\\\/#?&%\"']"), "_")}"
-        val url = storageUpload(path, bytes, mime)
+        val url = storageUpload("chat-files", path, bytes, mime)
         return url to bytes.size.toLong()
     }
 
-    private suspend fun storageUpload(path: String, bytes: ByteArray, mime: String): String = withContext(Dispatchers.IO) {
+    private suspend fun storageUpload(bucket: String, path: String, bytes: ByteArray, mime: String): String = withContext(Dispatchers.IO) {
+        val encodedPath = path.split("/").joinToString("/") { java.net.URLEncoder.encode(it, "UTF-8").replace("+", "%20") }
         val rb = Request.Builder()
-            .url("$URL/storage/v1/object/chat-files/$path")
+            .url("$URL/storage/v1/object/$bucket/$encodedPath")
             .header("apikey", KEY)
             .header("Authorization", "Bearer " + (session?.access ?: ""))
             .header("x-upsert", "true")
@@ -456,7 +460,7 @@ object Supa {
         http.newCall(rb.build()).execute().use { r ->
             if (r.code !in 200..299) throw Exception("Загрузка не удалась: HTTP ${r.code} ${r.body?.string()?.take(120)}")
         }
-        "$URL/storage/v1/object/public/chat-files/$path"
+        "$URL/storage/v1/object/public/$bucket/$encodedPath"
     }
 
     // ---------- личные чаты / блокировки ----------
