@@ -586,8 +586,11 @@ fun MainScreen(me: Profile, jumpChat: String?, onLogout: () -> Unit) {
 private fun startSessionHeartbeat() {
     CoroutineScope(Dispatchers.IO).launch {
         while (isActive) {
-            kotlinx.coroutines.delay(120_000)
-            try { Supa.pingSession() } catch (_: Exception) { }
+            kotlinx.coroutines.delay(60_000)
+            try {
+                Supa.pingSession()
+                Supa.touchLastSeen()
+            } catch (_: Exception) { }
         }
     }
 }
