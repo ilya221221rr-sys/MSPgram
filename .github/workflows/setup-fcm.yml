@@ -37,9 +37,10 @@ jobs:
             echo "::error title=Токен недействителен ($CODE)::Создай новый на supabase.com/dashboard/account/tokens"; exit 1
           fi
           echo "SUPABASE_ACCESS_TOKEN=$TOKEN" >> "$GITHUB_ENV"
+      # версия зафиксирована: "latest" каждый раз ходит в GitHub API и упирается в rate limit
       - uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: 3.3.0
       - name: Проверка секретов
         env:
           SA_JSON: ${{ secrets.FCM_SERVICE_ACCOUNT_JSON }}
