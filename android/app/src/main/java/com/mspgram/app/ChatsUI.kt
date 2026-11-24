@@ -275,7 +275,7 @@ fun ChatRow(meId: String, chat: Chat, onOpen: (String) -> Unit, unreadIn: Int = 
                 if (unreadCnt > 0) {
                     Box(
                         Modifier.background(
-                            if (muted) MutedText else Brush.linearGradient(listOf(accentColor(Prefs.get().accent), Accent2)),
+                            if (muted) androidx.compose.ui.graphics.SolidColor(MutedText) else Brush.linearGradient(listOf(accentColor(Prefs.get().accent), Accent2)),
                             RoundedCornerShape(10.dp),
                         ).padding(horizontal = 7.dp, vertical = 1.dp),
                     ) {
