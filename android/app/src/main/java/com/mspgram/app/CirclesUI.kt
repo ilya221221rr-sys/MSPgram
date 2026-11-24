@@ -2,7 +2,7 @@ package com.mspgram.app
 
 import android.media.MediaMetadataRetriever
 import android.media.MediaPlayer
-import android.widget.TextureView
+import android.view.TextureView
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
