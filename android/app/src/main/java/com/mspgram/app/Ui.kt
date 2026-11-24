@@ -22,6 +22,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import android.app.Activity
+import android.os.Build
+import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -116,6 +121,17 @@ fun accentGradient(name: String): List<Color> = when (name) {
 @Composable
 fun MspTheme(content: @Composable () -> Unit) {
     val a = accentColor(Prefs.get().accent)
+    val view = LocalView.current
+    // Синхронизируем статус-бар и нижнюю системную панель с текущим скином.
+    SideEffect {
+        (view.context as? Activity)?.window?.let { window ->
+            window.statusBarColor = DarkBg.toArgb()
+            window.navigationBarColor = DarkBg.toArgb()
+            window.navigationBarDividerColor = LineC.toArgb()
+            if (Build.VERSION.SDK_INT >= 29) window.isNavigationBarContrastEnforced = false
+            window.decorView.systemUiVisibility = 0
+        }
+    }
     // чтение версии темы — смена скина перерисовывает всё приложение
     ThemeState.version.value
     MaterialTheme(
