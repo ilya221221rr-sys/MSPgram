@@ -94,5 +94,11 @@ jobs:
             fi
             sleep 6
           done
-          echo "::error title=Функция не готова::Смотри ответ выше"
+          if echo "$R" | jq -e '.hasServiceAccount == false' >/dev/null 2>&1; then
+            echo "::error title=В секрете не тот файл::FCM_SERVICE_ACCOUNT_JSON не содержит private_key. Нужен JSON СЕРВИСНОГО АККАУНТА: Firebase console → Настройки проекта → Сервисные аккаунты → Создать новый закрытый ключ (файл вида mspgram-...-adminsdk-....json с полями private_key и client_email). Файл google-services.json НЕ подходит."
+          elif echo "$R" | jq -e '.hasWebhookSecret == false' >/dev/null 2>&1; then
+            echo "::error title=Секрет функции не применился::FCM_WEBHOOK_SECRET пуст в Edge Function — запусти этот workflow ещё раз"
+          else
+            echo "::error title=Функция не готова::Ответ функции: $R"
+          fi
           exit 1
