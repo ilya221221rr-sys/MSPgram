@@ -424,7 +424,7 @@ fun AdminScreen(me: Profile, onClose: () -> Unit, onOpenChat: (String) -> Unit) 
             }
         }
         when (tab) {
-            "users" -> AdminUsers(me)
+            "users" -> AdminUsers(me, onOpenChat)
             "reports" -> AdminReports()
             "stats" -> AdminStats()
         }
@@ -432,7 +432,7 @@ fun AdminScreen(me: Profile, onClose: () -> Unit, onOpenChat: (String) -> Unit) 
 }
 
 @Composable
-fun AdminUsers(me: Profile) {
+fun AdminUsers(me: Profile, onOpenChat: (String) -> Unit) {
     var users by remember { mutableStateOf<List<Profile>>(emptyList()) }
     var roleFor by remember { mutableStateOf<Profile?>(null) }
     var editFor by remember { mutableStateOf<Profile?>(null) }
