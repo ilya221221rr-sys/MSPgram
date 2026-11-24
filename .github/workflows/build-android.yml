@@ -24,7 +24,20 @@ jobs:
         with:
           gradle-version: '8.10.2'
       - name: Сборка debug-APK
-        run: gradle -p android assembleDebug --no-daemon
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle -p android assembleDebug --no-daemon 2>&1 | tee /tmp/build.log
+
+      # ошибки компиляции → аннотации запуска (видны в API и вверху страницы Actions)
+      - name: Ошибки сборки → аннотации
+        if: failure()
+        shell: bash
+        run: |
+          grep -E "^e: |error:|FAILURE: Build|What went wrong|Caused by" /tmp/build.log | head -60 | cut -c1-220 | while IFS= read -r line; do
+            echo "::error ::$line"
+          done
+
       - uses: actions/upload-artifact@v4
         with:
           name: MSPgram-APK
