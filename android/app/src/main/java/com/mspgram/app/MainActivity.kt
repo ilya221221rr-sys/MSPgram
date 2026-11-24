@@ -1,7 +1,9 @@
 package com.mspgram.app
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -95,7 +97,7 @@ fun Root(jumpChat: String?) {
     } else if (me == null) {
         LoginScreen(onEnter = { me = Supa.me })
     } else {
-        MainScreen(me!!, jumpChat, onLogout = {
+        CompanionScreen(me!!, onLogout = {
             scope.launch { Supa.logout() }
             me = null
         })
@@ -256,6 +258,94 @@ fun LoginScreen(onEnter: () -> Unit) {
                 ) { Text("Подтвердить", color = if (mfaCode.length == 6) accentColor(Prefs.get().accent) else MutedText) }
             },
             dismissButton = { TextButton(onClick = { mfaBusy = false; err = "" }) { Text("Отмена", color = MutedText) } },
+        )
+    }
+}
+
+// ============================================================
+//  КОМПАНЬОН-ПРИЛОЖЕНИЕ: уведомления о сообщениях и звонках сайта.
+//  Сам мессенджер — веб-версия; приложение только логин + push (FCM).
+// ============================================================
+
+@Composable
+fun CompanionScreen(me: Profile, onLogout: () -> Unit) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val acc = accentColor(Prefs.get().accent)
+    val notifPerm = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) registerFcm(ctx)
+    }
+
+    // при старте: разрешение на уведомления + привязка FCM-токена к аккаунту
+    LaunchedEffect(Unit) {
+        val need = android.os.Build.VERSION.SDK_INT >= 33 &&
+            androidx.core.content.ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.POST_NOTIFICATIONS)
+                != android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (need) notifPerm.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        else registerFcm(ctx)
+    }
+
+    Column(
+        Modifier.fillMaxSize().background(DarkBg).padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Text("✈️", fontSize = 52.sp)
+        Spacer(Modifier.size(10.dp))
+        Text(
+            "MSPgram",
+            fontSize = 28.sp, fontWeight = FontWeight.ExtraBold,
+            style = androidx.compose.ui.text.TextStyle(
+                brush = androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(Color(0xFFDFE8FF), Color(0xFF9DB4FF))),
+            ),
+        )
+        Text("Уведомления о сообщениях и звонках", color = MutedText, fontSize = 13.sp)
+        Spacer(Modifier.size(28.dp))
+
+        Column(
+            Modifier.fillMaxWidth().background(DarkSurface, RoundedCornerShape(18.dp))
+                .border(1.dp, LineC, RoundedCornerShape(18.dp))
+                .padding(20.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Avatar(me.name, 42.dp, me.avatar_url, circle = true)
+                Spacer(Modifier.width(12.dp))
+                Column {
+                    Text(me.name, color = TextC, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text("@${me.nickname}", color = acc, fontSize = 12.sp)
+                }
+            }
+            Spacer(Modifier.size(14.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(9.dp).background(OkColor, CircleShape))
+                Spacer(Modifier.width(8.dp))
+                Text("Push-уведомления включены", color = OkColor, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            }
+            Spacer(Modifier.size(6.dp))
+            Text(
+                "Закрой приложение — уведомления о новых сообщениях и входящих звонках придут с сервера",
+                color = MutedText, fontSize = 12.sp, lineHeight = 16.sp,
+            )
+        }
+
+        Spacer(Modifier.size(20.dp))
+        // весь мессенджер — на сайте
+        Box(
+            Modifier.fillMaxWidth().height(48.dp)
+                .background(Brush.linearGradient(listOf(acc, Accent2)), RoundedCornerShape(12.dp))
+                .clickable {
+                    runCatching {
+                        ctx.startActivity(
+                            Intent(Intent.ACTION_VIEW, Uri.parse("https://ilya221221rr-sys.github.io/MSPgram/")),
+                        )
+                    }
+                },
+            contentAlignment = Alignment.Center,
+        ) { Text("🌐 Открыть сайт", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 15.sp) }
+        Spacer(Modifier.size(10.dp))
+        Text(
+            "Выйти из аккаунта",
+            color = DangerColor, fontSize = 13.sp,
+            modifier = Modifier.clickable { onLogout() }.padding(8.dp),
         )
     }
 }

@@ -120,6 +120,49 @@ Deno.serve(async (req) => {
     });
   }
 
+  // call — пуш о входящем звонке. Вызывается САЙТОМ от имени пользователя
+  // (Authorization: Bearer <JWT>), поэтому стоит ДО проверки webhook-секрета.
+  if (body.type === 'call') {
+    try {
+      const auth = req.headers.get('Authorization') || '';
+      const jwt = auth.startsWith('Bearer ') ? auth.slice(7) : '';
+      if (!jwt) return json({ error: 'unauthorized' }, 401);
+      const { data: udata, error: uerr } = await admin.auth.getUser(jwt);
+      if (uerr || !udata?.user) return json({ error: 'unauthorized' }, 401);
+      const callerId = udata.user.id;
+      const to = String(body.to_user_id || '');
+      if (!to || to === callerId) return json({ error: 'bad to_user_id' }, 400);
+
+      // отправитель и получатель должны состоять в одном общем чате
+      const { data: shared } = await admin.from('chat_members')
+        .select('chat_id, user_id').in('user_id', [callerId, to]);
+      const mine = new Set((shared || []).filter((x: { user_id: string }) => x.user_id === callerId).map((x: { chat_id: string }) => x.chat_id));
+      const hasCommon = (shared || []).some((y: { user_id: string; chat_id: string }) => y.user_id === to && mine.has(y.chat_id));
+      if (!hasCommon) return json({ error: 'no shared chat' }, 403);
+
+      const { data: tokens } = await admin.from('fcm_tokens').select('token').eq('user_id', to);
+      if (!tokens || !tokens.length) return json({ sent: 0 });
+
+      const payload = {
+        data: {
+          kind: 'call',
+          title: '📞 Входящий звонок',
+          body: String(body.caller_name || ''),
+          chatId: '',
+          tag: `msp-call-${to}`,
+        },
+        android: { priority: 'HIGH', ttl: '30s' },
+      };
+      let sent = 0;
+      await Promise.all(tokens.map(async (t: { token: string }) => {
+        try { if (await fcmSend(projectId, t.token, payload)) sent++; } catch { /* устройство не должно ронять остальные */ }
+      }));
+      return json({ sent, devices: tokens.length });
+    } catch (e) {
+      return json({ error: (e as Error).message }, 500);
+    }
+  }
+
   if (!WEBHOOK_SECRET || !safeEqual(secret, WEBHOOK_SECRET)) {
     return json({ error: 'bad webhook secret' }, 403);
   }
