@@ -66,6 +66,7 @@ object Realtime {
     val online = MutableStateFlow<Set<String>>(emptySet())
     private val presenceMeta = mutableMapOf<String, MutableMap<String, String>>()
     val presenceStatus = MutableStateFlow<Map<String, String>>(emptyMap())
+    private var presenceJoinRef: String? = null
 
     private fun nextRef(): String = (refCounter++).toString()
 
@@ -115,7 +116,8 @@ object Realtime {
                 when (env.event) {
                     "phx_reply" -> {
                         val status = env.payload?.get("status")?.jsonPrimitive?.contentOrNull
-                        if (topic == "msp-online" && status == "ok" && uidKey.isNotBlank()) {
+                        if (topic == "msp-online" && env.ref == presenceJoinRef && status == "ok" && uidKey.isNotBlank()) {
+                            presenceJoinRef = null
                             val myStatus = Supa.me?.presence_status?.takeIf { it.isNotBlank() } ?: "online"
                             if (myStatus == "invisible") presenceUntrack()
                             else presenceTrack(uidKey, myStatus)
@@ -192,6 +194,7 @@ object Realtime {
             presenceMeta.clear()
             presenceStatus.value = emptyMap()
             online.value = emptySet()
+            presenceJoinRef = null
             hb?.cancel(); hb = null
             scheduleReconnect(lastApikey, lastUrl)
         }
@@ -199,6 +202,10 @@ object Realtime {
         override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
             ws = null
             connected.value = false
+            presenceMeta.clear()
+            presenceStatus.value = emptyMap()
+            online.value = emptySet()
+            presenceJoinRef = null
             hb?.cancel(); hb = null
             scheduleReconnect(lastApikey, lastUrl)
         }
@@ -242,7 +249,9 @@ object Realtime {
             val presenceKey = if (topic == "msp-online") uidKey else ""
             """{"config":{"broadcast":{"self":false},"presence":{"key":"$presenceKey"}}}"""
         }
-        val msg = """{"topic":"$topic","event":"phx_join","ref":"${nextRef()}","payload":$payload}"""
+        val ref = nextRef()
+        if (topic == "msp-online") presenceJoinRef = ref
+        val msg = """{"topic":"$topic","event":"phx_join","ref":"$ref","payload":$payload}"""
         ws?.send(msg)
     }
 
