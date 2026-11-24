@@ -9,7 +9,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.JsonObject as JO
 import org.webrtc.AudioSource
@@ -71,7 +73,7 @@ object CallRingtone {
     private var step = 0
 
     private val inMelody = intArrayOf(
-        android.media.ToneGenerator.TONE_CDMA_CONFIRM_BEEP,
+        android.media.ToneGenerator.TONE_PROP_BEEP,
         android.media.ToneGenerator.TONE_PROP_BEEP2,
         android.media.ToneGenerator.TONE_CDMA_CALL_SIGNAL_ISDN_PAT3,
     )
@@ -107,11 +109,7 @@ object CallRingtone {
     private fun vibrate() {
         try {
             val v = MspApp.instance?.getSystemService(android.content.Context.VIBRATOR_SERVICE) as? android.os.Vibrator ?: return
-            if (android.os.Build.VERSION.SDK_INT >= 31) {
-                v.vibrate(android.os.VibrationEffect.createWaveform(longArrayOf(0, 200, 100, 200, 100, 200), -1))
-            } else @Suppress("DEPRECATION") {
-                v.vibrate(longArrayOf(0, 200, 100, 200, 100, 200))
-            }
+            v.vibrate(android.os.VibrationEffect.createWaveform(longArrayOf(0, 200, 100, 200, 100, 200), -1))
         } catch (_: Exception) { }
     }
 
@@ -434,7 +432,7 @@ object Calls {
                             scope.launch {
                                 delay(1200) // waitIce (как на сайте)
                                 Realtime.sendBroadcast("call-$id", "call-answer",
-                                    """{"sdp":${jsonStr(pc?.localDescription?.description ?: "")},"candidates":${candsJson(pc?.tag as? List<IceCandidate>)}}""")
+                                    """{"sdp":${jsonStr(pc?.localDescription?.description ?: "")},"candidates":${candsJson(candByPc[pc])}}""")
                             }
                         }
                     }, MediaConstraints())
