@@ -1,7 +1,7 @@
 // ============================================================
 //  Быстрый переход (Ctrl/⌘ + K): чаты и команды в одном окне
 // ============================================================
-import { state, chatTitleFor, dbApi } from './api.js';
+import { state, chatTitleFor, dbApi } from './api.js?v=26';
 import { qs, esc, el, bus, toast, avatarHTML, getPrefs, setPrefs } from './utils.js';
 
 const click = (sel) => () => qs(sel)?.click();

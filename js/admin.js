@@ -2,7 +2,7 @@
 //  Админ-панель: пользователи (бан/разбан/переименовать)
 //  и чтение переписки любых чатов. Видна только is_admin.
 // ============================================================
-import { state, dbApi } from './api.js';
+import { state, dbApi } from './api.js?v=26';
 import { esc, el, avatarHTML, relLastSeen, toast } from './utils.js';
 import { EXTRA_TABS, renderUsersTab, renderExtraTab, audit } from './admin2.js';
 

@@ -3,7 +3,7 @@
 //  права групп, доставка, поиск, починка списка чатов)
 //  Все вызовы терпимы к отсутствию миграции №9 — не ломают приложение.
 // ============================================================
-import { getSb, state, dbApi, otherMember } from './api.js';
+import { getSb, state, dbApi, otherMember } from './api.js?v=26';
 import { bus, getPrefs, setPrefs, uuid } from './utils.js';
 
 const sb = () => getSb();

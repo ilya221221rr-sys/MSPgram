@@ -3,7 +3,7 @@
 //  пользователя, диалог бана, рассылки, журнал действий,
 //  диагностика ИИ, состояние системы.
 // ============================================================
-import { getSb, state, dbApi } from './api.js';
+import { getSb, state, dbApi } from './api.js?v=26';
 import { qs, esc, el, toast, avatarHTML, relLastSeen, confirmDialog } from './utils.js';
 import { renderAiDiag } from './ai-diag.js';
 import { openRenameDialog } from './v23.js';

@@ -2,7 +2,7 @@
 //  Профиль 2.0: обложка, статус, дата регистрации, QR-код,
 //  блокировка и жалобы. Открывается кликом на имя/аватарку.
 // ============================================================
-import { state, dbApi } from './api.js';
+import { state, dbApi } from './api.js?v=26';
 import { esc, el, toast, relLastSeen, bus, MONTHS_RU } from './utils.js';
 import { presenceLabel, isShownOnline, isFriend } from './api-v18.js';
 

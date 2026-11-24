@@ -1,6 +1,6 @@
 // GIF-панель (Giphy). Ключ — бесплатный, берётся на developers.giphy.com;
 // вписывается один раз в js/config.js (giphyKey) или прямо здесь в панели.
-import { state, dbApi } from './api.js';
+import { state, dbApi } from './api.js?v=26';
 import { qs, el, esc, toast, getPrefs, setPrefs, debounce } from './utils.js';
 import { onNewMessage } from './chatview.js';
 

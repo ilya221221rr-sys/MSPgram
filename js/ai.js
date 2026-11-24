@@ -3,7 +3,7 @@
 //  По умолчанию — бесплатный OpenAI-совместимый шлюз Pollinations (без ключа).
 //  В Настройках → ИИ можно указать свой endpoint / ключ / модель.
 // ============================================================
-import { state, memberProfile, chatTitleFor, dbApi } from './api.js';
+import { state, memberProfile, chatTitleFor, dbApi } from './api.js?v=26';
 import { qs, esc, el, toast, getPrefs, setPrefs } from './utils.js';
 import { icon } from './icons.js';
 import { getLoadedMessages, refreshMessages } from './chatview.js';

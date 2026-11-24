@@ -2,7 +2,7 @@
 //  v18: расширенные настройки (статус, приватность, звук, ИИ, безопасность),
 //  двухфакторная защита (TOTP), активные сессии, права групп
 // ============================================================
-import { getSb, state, dbApi, authApi, memberProfile } from './api.js';
+import { getSb, state, dbApi, authApi, memberProfile } from './api.js?v=26';
 import { qs, esc, el, toast, getPrefs, setPrefs, confirmDialog, SOUNDS, beep, avatarHTML } from './utils.js';
 import { applyPrefs } from './settings.js';
 import { trackMe } from './presence.js';

@@ -2,7 +2,7 @@
 //  Папки чатов (как в Telegram): свои вкладки над списком чатов.
 //  Хранятся на устройстве (localStorage), счётчики непрочитанных — на вкладке.
 // ============================================================
-import { state, chatTitleFor } from './api.js';
+import { state, chatTitleFor } from './api.js?v=26';
 import { qs, esc, el, toast, getPrefs, setPrefs, avatarHTML } from './utils.js';
 
 export const getFolders = () => (getPrefs().folders || []).filter((f) => f && f.id);

@@ -3,7 +3,7 @@
 //  цепочка запасных моделей, ЖУРНАЛ ОШИБОК и самотест.
 //  Именно здесь решается проблема «OpenRouter Free → 404».
 // ============================================================
-import { getSb, state } from './api.js';
+import { getSb, state } from './api.js?v=26';
 import { getPrefs } from './utils.js';
 
 export const DEFAULT_URL = 'https://text.pollinations.ai/openai';

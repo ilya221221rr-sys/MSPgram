@@ -10,7 +10,7 @@
 //    звонок больше не сбрасывается от короткой потери связи;
 //  • история звонков пишется в чат карточкой (см. callcard.js);
 //  • мягкие настройки видео (≈640×360, ≤24 к/с, ≤0.8 Мбит/с, maintain-framerate) — меньше лагов.
-import { getSb, state, otherMember, memberProfile, chatTitleFor, isSavedChat, dbApi } from './api.js';
+import { getSb, state, otherMember, memberProfile, chatTitleFor, isSavedChat, dbApi } from './api.js?v=26';
 import { el, qs, toast, avatarHTML, esc, fmtDuration } from './utils.js';
 import { icon } from './icons.js';
 import { callBody } from './callcard.js';
