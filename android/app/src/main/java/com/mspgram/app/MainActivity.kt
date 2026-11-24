@@ -336,7 +336,6 @@ fun MainScreen(me: Profile, jumpChat: String?, onLogout: () -> Unit) {
         )
         reloadAnnouncement()
         Realtime.join("msp-online")
-        Realtime.presenceTrack(Supa.userId ?: "", Supa.me?.presence_status ?: "online")
         Supa.registerSession("Android")
         Supa.markDelivered()
         startSessionHeartbeat()
