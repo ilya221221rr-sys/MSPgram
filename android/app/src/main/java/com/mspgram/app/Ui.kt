@@ -125,7 +125,7 @@ fun MspTheme(content: @Composable () -> Unit) {
 
 // обои чата (appearance.js: WALLS)
 @Composable
-fun ChatWall(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+fun ChatWall(modifier: Modifier = Modifier, content: @Composable androidx.compose.foundation.layout.BoxScope.() -> Unit) {
     val wall = Prefs.get().wall
     val hasGradient = wall in listOf("aurora", "dusk", "ocean", "mint")
     if (wall == "none" || hasGradient) {
@@ -136,7 +136,7 @@ fun ChatWall(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
             "mint" -> Brush.verticalGradient(listOf(Color(0x334ADE80), Color(0x1A3DD68C), Color.Transparent))
             else -> Brush.verticalGradient(listOf(Color.Transparent, Color.Transparent))
         }
-        Box(modifier.background(brush), contentAlignment = Alignment.TopStart) { content() }
+        Box(modifier.background(brush), contentAlignment = Alignment.TopStart, content = content)
     } else {
         // узоры: точки (doodle), звёзды (stars), сетка (grid)
         Box(modifier.drawBehind {
@@ -434,6 +434,7 @@ fun DaySep(text: String) {
 fun ServerRail(
     servers: List<Chat>,
     activeChatId: String?,
+    unread: Map<String, Int> = emptyMap(),
     onHome: () -> Unit,
     onServer: (Chat) -> Unit,
     onAdd: () -> Unit,
@@ -454,21 +455,32 @@ fun ServerRail(
         Spacer(Modifier.height(6.dp))
         Box(Modifier.width(32.dp).height(2.dp).background(LineC, RoundedCornerShape(1.dp)))
         Spacer(Modifier.height(6.dp))
-        // серверы: сквиркл 42, активный — кольцо акцента
+        // серверы: сквиркл 42, активный — кольцо акцента, badge непрочитанных (rail-badge)
         servers.forEach { c ->
             val active = activeChatId == c.id
-            Box(
-                Modifier.size(42.dp).background(DarkSurface2, RoundedCornerShape(13.dp))
-                    .then(if (active) Modifier.border(2.dp, accentColor(Prefs.get().accent), RoundedCornerShape(13.dp)) else Modifier)
-                    .clickable { onServer(c) },
-                contentAlignment = Alignment.Center,
-            ) {
-                if (c.avatar_url != null) {
-                    coil.compose.AsyncImage(model = c.avatar_url, contentDescription = null,
-                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                        modifier = Modifier.size(42.dp).background(DarkSurface2, RoundedCornerShape(13.dp)))
-                } else {
-                    Text((c.title ?: "С").take(1).uppercase(), color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
+            val cnt = unread[c.id] ?: 0
+            Box {
+                Box(
+                    Modifier.size(42.dp).background(DarkSurface2, RoundedCornerShape(13.dp))
+                        .then(if (active) Modifier.border(2.dp, accentColor(Prefs.get().accent), RoundedCornerShape(13.dp)) else Modifier)
+                        .clickable { onServer(c) },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (c.avatar_url != null) {
+                        coil.compose.AsyncImage(model = c.avatar_url, contentDescription = null,
+                            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                            modifier = Modifier.size(42.dp).background(DarkSurface2, RoundedCornerShape(13.dp)))
+                    } else {
+                        Text((c.title ?: "С").take(1).uppercase(), color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
+                    }
+                }
+                if (cnt > 0) {
+                    // rail-badge: 18dp круг danger, граница 2px цветом рейла
+                    Box(Modifier.align(Alignment.TopEnd).offset(x = 2.dp, y = (-2).dp)
+                        .size(18.dp).background(DangerColor, CircleShape)
+                        .border(2.dp, RailBg, CircleShape), contentAlignment = Alignment.Center) {
+                        Text(if (cnt > 9) "9+" else "$cnt", color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
             Spacer(Modifier.height(6.dp))

@@ -110,6 +110,8 @@ fun LoginScreen(onEnter: () -> Unit) {
     var pass by remember { mutableStateOf("") }
     var nick by remember { mutableStateOf("") }
     var err by remember { mutableStateOf("") }
+    var mfaCode by remember { mutableStateOf("") } // 2FA: ввод кода из приложения-аутентификатора
+    var mfaBusy by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
@@ -191,6 +193,8 @@ fun LoginScreen(onEnter: () -> Unit) {
                                 if (mode == "login") Supa.signIn(email.trim(), pass)
                                 else Supa.signUp(email.trim(), pass, nick.trim())
                                 onEnter()
+                            } catch (e: Supa.MfaRequiredException) {
+                                mfaBusy = true // показать диалог кода 2FA
                             } catch (e: Exception) { err = e.message ?: "Ошибка" }
                             busy = false
                         }
@@ -206,6 +210,52 @@ fun LoginScreen(onEnter: () -> Unit) {
                 )
             }
         }
+    }
+
+    // ---------- 2FA: ввод 6-значного кода (extras.js ensureMfa) ----------
+    if (mfaBusy) {
+        AlertDialog(
+            onDismissRequest = { mfaBusy = false },
+            containerColor = DarkSurface,
+            titleContentColor = TextC,
+            title = { Text("Код 2FA") },
+            text = {
+                Column {
+                    Text("Введи 6-значный код из приложения-аутентификатора", color = MutedText, fontSize = 13.sp)
+                    Spacer(Modifier.size(10.dp))
+                    OutlinedTextField(
+                        value = mfaCode, onValueChange = { if (it.length <= 6) mfaCode = it.filter { c -> c.isDigit() } },
+                        singleLine = true,
+                        shape = RoundedCornerShape(10.dp),
+                        colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = accentColor(Prefs.get().accent),
+                            unfocusedBorderColor = LineC,
+                            focusedContainerColor = DarkSurface2,
+                            unfocusedContainerColor = DarkSurface2,
+                            focusedTextColor = TextC,
+                            unfocusedTextColor = TextC,
+                            cursorColor = accentColor(Prefs.get().accent),
+                        ),
+                    )
+                    if (err.isNotEmpty()) { Spacer(Modifier.size(8.dp)); Text(err, color = Color(0xFFFF8F92), fontSize = 12.sp) }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = mfaCode.length == 6,
+                    onClick = {
+                        scope.launch {
+                            try {
+                                Supa.mfaVerifyCode(mfaCode)
+                                mfaBusy = false
+                                onEnter()
+                            } catch (e: Exception) { err = e.message ?: "Ошибка" }
+                        }
+                    },
+                ) { Text("Подтвердить", color = if (mfaCode.length == 6) accentColor(Prefs.get().accent) else MutedText) }
+            },
+            dismissButton = { TextButton(onClick = { mfaBusy = false; err = "" }) { Text("Отмена", color = MutedText) } },
+        )
     }
 }
 
@@ -380,9 +430,11 @@ fun MainScreen(me: Profile, jumpChat: String?, onLogout: () -> Unit) {
         if (!chatOpen) {
             Row(Modifier.fillMaxSize()) {
                 val railVersion by Supa.chatListVersion.collectAsState() // подписка: рейл живёт вместе со списком
+                val railUnread = Supa.unread.mapValues { it.value.toInt() }
                 ServerRail(
                     servers = Supa.chats.filter { it.type == "group" && it.myFlags(me.id)?.archived != true }.also { railVersion },
                     activeChatId = null,
+                    unread = railUnread,
                     onHome = { tab = 0 },
                     onServer = { c -> openChatId = c.id },
                     onAdd = { /* диалог нового сервера открывается из списка чатов */ scope.launch { } },

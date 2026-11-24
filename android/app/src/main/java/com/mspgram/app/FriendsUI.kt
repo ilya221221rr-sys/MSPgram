@@ -163,6 +163,7 @@ fun ProfileSheetView(me: Profile, onOpenChat: (String) -> Unit) {
     var p by remember(ProfileSheet.userId.value) { mutableStateOf<Profile?>(null) }
     var err by remember { mutableStateOf("") }
     var reportOpen by remember { mutableStateOf(false) }
+    var qrOpen by remember { mutableStateOf(false) }
     var friendState by remember { mutableStateOf("none") } // none | friends | pending_in | pending_out
     var friendRowId by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
@@ -281,6 +282,8 @@ fun ProfileSheetView(me: Profile, onOpenChat: (String) -> Unit) {
                         )
                         Text("⚠️ Пожаловаться", color = MutedText, fontSize = 13.sp,
                             modifier = Modifier.clickable { reportOpen = true })
+                        Text("🔲 QR", color = accentColor(Prefs.get().accent), fontSize = 13.sp,
+                            modifier = Modifier.clickable { qrOpen = true })
                     }
                     if (err.isNotEmpty()) Text(err, color = DangerColor, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
                 }
@@ -291,6 +294,8 @@ fun ProfileSheetView(me: Profile, onOpenChat: (String) -> Unit) {
     }
 
         }
+
+    prof?.let { pr -> if (qrOpen) QrDialog(pr, onClose = { qrOpen = false }) }
 
     if (reportOpen) {
         var reason by remember { mutableStateOf("") }
@@ -315,4 +320,53 @@ fun ProfileSheetView(me: Profile, onOpenChat: (String) -> Unit) {
             dismissButton = { TextButton(onClick = { reportOpen = false }) { Text("Отмена", color = MutedText) } },
         )
     }
+}
+
+// ---------- QR-код профиля (profile.js showQr) ----------
+@Composable
+fun QrDialog(prof: Profile, onClose: () -> Unit) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val link = remember(prof.id) { "https://ilya221221rr-sys.github.io/MSPgram/?add=${prof.id}" }
+    val bitmap = remember(prof.id) {
+        runCatching {
+            val bits = com.google.zxing.qrcode.QRCodeWriter().encode(
+                link, com.google.zxing.BarcodeFormat.QR_CODE, 512, 512,
+                mapOf(com.google.zxing.EncodeHintType.MARGIN to 1),
+            )
+            val bmp = android.graphics.Bitmap.createBitmap(512, 512, android.graphics.Bitmap.Config.RGB_565)
+            for (x in 0 until 512) for (y in 0 until 512) {
+                bmp.setPixel(x, y, if (bits.get(x, y)) android.graphics.Color.BLACK else android.graphics.Color.WHITE)
+            }
+            bmp
+        }.getOrNull()
+    }
+    AlertDialog(
+        onDismissRequest = onClose,
+        containerColor = DarkSurface,
+        titleContentColor = TextC,
+        title = { Text("QR-код профиля") },
+        text = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                if (bitmap != null) {
+                    androidx.compose.ui.graphics.asImageBitmap(bitmap).let {
+                        androidx.compose.foundation.Image(
+                            it, contentDescription = "QR",
+                            modifier = Modifier.size(220.dp).background(Color.White, RoundedCornerShape(12.dp)).padding(8.dp),
+                        )
+                    }
+                }
+                Spacer(Modifier.size(8.dp))
+                Text(
+                    link, color = MutedText, fontSize = 11.sp,
+                    modifier = Modifier.clickable {
+                        val cm = androidx.compose.ui.platform.LocalClipboardManager.current
+                        cm.setText(androidx.compose.ui.text.AnnotatedString(link))
+                        Calls.toastMsg("Ссылка скопирована")
+                    },
+                )
+                Text("Другой сканирует код и добавится к тебе в друзья", color = MutedText, fontSize = 11.sp)
+            }
+        },
+        confirmButton = { TextButton(onClick = onClose) { Text("Готово", color = MutedText) } },
+    )
 }
