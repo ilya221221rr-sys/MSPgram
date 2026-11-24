@@ -830,6 +830,6 @@ object Supa {
         if (privacy == "nobody") return null
         if (privacy == "friends" && friends.none { it.profile?.id == p.id }) return null
         if (!Realtime.online.value.contains(p.id)) return null
-        return p.presence_status?.takeIf { it in listOf("online", "away", "dnd") } ?: "online"
+        return Realtime.presenceStatus.value[p.id]?.takeIf { it in listOf("online", "away", "dnd") } ?: "online"
     }
 }
