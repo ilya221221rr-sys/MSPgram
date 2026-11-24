@@ -205,7 +205,7 @@ fun ChatScreen(me: Profile, chatId: String, onBack: () -> Unit) {
                 if (chat.type == "direct") {
                     chat.otherMember(me.id)?.let { ProfileSheet.open(it.id) }
                 } else {
-                    channelMenu = true
+                    infoOpen = true
                 }
             }) {
                 Avatar(chat.titleFor(me.id), 36.dp, chat.avatar_url ?: chat.otherMember(me.id)?.avatar_url)
@@ -443,7 +443,7 @@ fun ChatScreen(me: Profile, chatId: String, onBack: () -> Unit) {
                         input = v; DraftStore.set(chatId, v); sendTyping()
                         // подсказки @упоминаний (v19)
                         val at = v.lastIndexOf('@')
-                        mentionQuery = if (at >= 0 && !v.contains(' ', at)) v.substring(at + 1) else null
+                        mentionQuery = if (at >= 0 && v.indexOf(' ', at) < 0) v.substring(at + 1) else null
                     },
                     placeholder = { Text("Сообщение…", color = MutedText) },
                     modifier = Modifier.weight(1f), maxLines = 4,
@@ -832,6 +832,7 @@ private fun Modifier.align2(): Modifier = this.then(
 
 // ---------- меню сообщения ----------
 
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun MsgMenuSheet(
     me: Profile,
@@ -861,15 +862,15 @@ fun MsgMenuSheet(
             }
         }
         Spacer(Modifier.size(10.dp))
-        MenuItem("↩ Ответить") onReply
-        if (own) MenuItem("✏️ Изменить") onEdit
-        MenuItem("📌 ${if (chat.pinned_message_id == m.id) "Открепить" else "Закрепить"}") onPin
-        MenuItem("↪ Переслать") onForward
+        MenuItem("↩ Ответить") { onReply() }
+        if (own) MenuItem("✏️ Изменить") { onEdit() }
+        MenuItem("📌 ${if (chat.pinned_message_id == m.id) "Открепить" else "Закрепить"}") { onPin() }
+        MenuItem("↪ Переслать") { onForward() }
         if (!m.body.isNullOrBlank()) {
-            MenuItem("🌐 Перевести") onTranslate
-            MenuItem("✨ Предложить ответы") onSuggest
+            MenuItem("🌐 Перевести") { onTranslate() }
+            MenuItem("✨ Предложить ответы") { onSuggest() }
         }
-        if (own || isMod || me.is_admin) MenuItem("🗑 Удалить") onDelete
+        if (own || isMod || me.is_admin) MenuItem("🗑 Удалить") { onDelete() }
         Spacer(Modifier.size(30.dp))
     }
 }
@@ -884,6 +885,7 @@ fun MenuItem(label: String, onClick: () -> Unit) {
 
 // ---------- пересылка ----------
 
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun ForwardSheet(chatList: List<Chat>, onPick: (Chat) -> Unit, onClose: () -> Unit) {
     ModalBottomSheet(onDismissRequest = onClose, containerColor = DarkSurface) {
