@@ -66,7 +66,7 @@ fun ChatsScreen(me: Profile, onOpen: (String) -> Unit) {
                 presence = if (Calls.state.inVoice.value) "online" else null)
             Spacer(Modifier.width(10.dp))
             Text(
-                "MSPgram v26",
+                "MSPgram v24",
                 fontSize = 16.sp, fontWeight = FontWeight.ExtraBold,
                 style = androidx.compose.ui.text.TextStyle(
                     brush = androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(Color(0xFFDFE8FF), Color(0xFF9DB4FF))),
