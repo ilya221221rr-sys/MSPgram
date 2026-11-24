@@ -429,11 +429,12 @@ fun MainScreen(me: Profile, jumpChat: String?, onLogout: () -> Unit) {
     Box(Modifier.fillMaxSize().background(DarkBg)) {
         val chatOpen = openChatId != null
         if (!chatOpen) {
-            val compactLayout = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp < 700
+            val deviceConfig = androidx.compose.ui.platform.LocalConfiguration.current
+            // В мобильной версии сайта рейл шириной 58 px остаётся слева.
+            // Он скрывается только в короткой альбомной ориентации, как в v21.css.
+            val compactLandscape = deviceConfig.screenWidthDp > 900 && deviceConfig.screenHeightDp < 520
             Row(Modifier.fillMaxSize()) {
-                // На телефонах сайт показывает список на всю ширину; серверный рейл
-                // оставляем для широких экранов, чтобы не сжимать мобильный интерфейс.
-                if (!compactLayout) {
+                if (!compactLandscape) {
                     val railVersion by Supa.chatListVersion.collectAsState()
                     val railUnread = Supa.unread.mapValues { it.value.toInt() }
                     ServerRail(
