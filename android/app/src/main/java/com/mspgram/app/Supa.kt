@@ -634,6 +634,18 @@ object Supa {
         } catch (_: Exception) { }
     }
 
+    // Аналог api-v18.js touch_last_seen: обновляем профильный last_seen,
+    // чтобы сайт и приложение показывали одинаковое время последнего визита.
+    suspend fun touchLastSeen() {
+        val meId = userId ?: return
+        val rpc = runCatching { reqRaw("POST", "/rest/v1/rpc/touch_last_seen", "{}") }.getOrNull()
+        if (rpc != null && rpc.code in 200..299) return
+        patch(
+            "/rest/v1/profiles?id=eq.$meId",
+            json.encodeToString(buildJsonObject { put("last_seen", isoNow()) }),
+        )
+    }
+
     suspend fun listSessions(): List<SessionRow> = try {
         json.decodeFromString(get("/rest/v1/user_sessions?select=*&revoked=eq.false&order=last_active.desc"))
     } catch (_: Exception) { emptyList() }
