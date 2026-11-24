@@ -24,6 +24,9 @@ import kotlinx.coroutines.launch
 
 @Composable
 fun FriendsScreen(me: Profile, onOpenChat: (String) -> Unit, onOpenProfile: (String) -> Unit) {
+    val onlineUsers by Realtime.online.collectAsState()
+    val liveStatuses by Realtime.presenceStatus.collectAsState()
+    LaunchedEffect(onlineUsers, liveStatuses) { }
     var search by remember { mutableStateOf("") }
     var addNick by remember { mutableStateOf("") }
     var addErr by remember { mutableStateOf("") }
