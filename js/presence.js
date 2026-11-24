@@ -1,6 +1,6 @@
 // Онлайн-статусы: Realtime Presence (в сети / отошёл / не беспокоить / невидимка)
 // + heartbeat «был(а) в сети». Простой автопереход в «отошёл» через 5 минут без активности.
-import { getSb, state, dbApi } from './api.js';
+import { getSb, state, dbApi } from './api.js?v=26';
 import { bus, setPrefs } from './utils.js';
 
 let channel = null;

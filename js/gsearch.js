@@ -1,5 +1,5 @@
 // Глобальный поиск: сообщения по всем чатам + публичные сообщества
-import { state, dbApi, chatTitleFor, otherMember, isSavedChat } from './api.js';
+import { state, dbApi, chatTitleFor, otherMember, isSavedChat } from './api.js?v=26';
 import { esc, el, bus, toast, avatarHTML, fmtListTime } from './utils.js';
 import { jumpToMessage } from './chatview.js';
 

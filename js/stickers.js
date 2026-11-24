@@ -1,6 +1,6 @@
 // MSPgram Stickers: встроенные анимированные стикеры (без CDN, работают офлайн)
 // Отправляются как сообщения attachment_type='sticker', анимация — CSS.
-import { dbApi, state } from './api.js';
+import { dbApi, state } from './api.js?v=26';
 import { el, qs, toast } from './utils.js';
 
 export const STICKER_PACKS = [

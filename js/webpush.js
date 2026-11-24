@@ -5,7 +5,7 @@
 //  Публичный VAPID-ключ приложение берёт у самой функции — вписывать его не нужно
 //  (можно и вручную: window.MSP_CONFIG.vapidPublicKey в js/config.js).
 // ============================================================
-import { getSb, state } from './api.js';
+import { getSb, state } from './api.js?v=26';
 
 const FN = 'send-push';
 const EP_KEY = 'msp_push_endpoint';

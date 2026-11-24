@@ -4,7 +4,7 @@
 //  • Автопереподписка на push при каждом возвращении в приложение
 //  • Админ: нормальное окно «Имя и юзернейм» (вместо window.prompt, который в APK не работает)
 // ============================================================
-import { getSb, state } from './api.js';
+import { getSb, state } from './api.js?v=26';
 import { qs, esc, el, toast } from './utils.js';
 import { pushSupported, subscribePush, sendTestPush, syncPushSilently } from './webpush.js';
 

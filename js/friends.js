@@ -1,5 +1,5 @@
 // Друзья: список, заявки, поиск и добавление, мой QR
-import { state, dbApi } from './api.js';
+import { state, dbApi } from './api.js?v=26';
 import { qs, esc, el, toast, avatarHTML, bus, relLastSeen, debounce } from './utils.js';
 import { presenceLabel, presenceKind } from './api-v18.js';
 import { openProfile, showQr } from './profile.js';

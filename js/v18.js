@@ -1,7 +1,7 @@
 // ============================================================
 //  MSPgram v18 «Aurora»: точка подключения новых модулей
 // ============================================================
-import { getSb, state, dbApi, memberProfile, chatTitleFor } from './api.js';
+import { getSb, state, dbApi, memberProfile, chatTitleFor } from './api.js?v=26';
 import './api-v18.js';
 import { bus, qs, toast, getPrefs, esc, avatarHTML } from './utils.js';
 import { mountIcons } from './icons.js';

@@ -1,5 +1,5 @@
 // Центр уведомлений: упоминания, реакции, заявки в друзья + красивые плашки
-import { state } from './api.js';
+import { state } from './api.js?v=26';
 import { qs, esc, el, toast, avatarHTML, fmtListTime, beep } from './utils.js';
 import { icon } from './icons.js';
 

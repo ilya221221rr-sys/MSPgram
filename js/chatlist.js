@@ -1,5 +1,5 @@
 // Список чатов 2.0: разделы «Личные» и «Серверы», поиск людей
-import { state, dbApi, otherMember, chatTitleFor, isSavedChat } from './api.js';
+import { state, dbApi, otherMember, chatTitleFor, isSavedChat } from './api.js?v=26';
 import {
   qs, esc, el, bus, toast, avatarHTML, fmtListTime,
   relLastSeen, lastSeenShort, debounce,

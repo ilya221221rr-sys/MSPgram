@@ -1,5 +1,5 @@
 // Настройки: профиль, уведомления, внешний вид (как в Telegram — свой раздел)
-import { state, dbApi, storeApi, authApi } from './api.js';
+import { state, dbApi, storeApi, authApi } from './api.js?v=26';
 import { openAdminPanel } from './admin.js';
 import { mountExtraSettings } from './extras.js';
 import { mountAppearance } from './appearance.js';

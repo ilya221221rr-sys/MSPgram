@@ -1,5 +1,5 @@
 // Окно чата 2.0: каналы серверов, реакции, закрепы, пересылка, поиск, черновики
-import { state, dbApi, storeApi, getSb, otherMember, memberProfile, chatTitleFor, isSavedChat } from './api.js';
+import { state, dbApi, storeApi, getSb, otherMember, memberProfile, chatTitleFor, isSavedChat } from './api.js?v=26';
 import {
   qs, qsa, esc, el, bus, toast, avatarHTML, fmtTime, fmtDaySep, sameDayKey,
   relLastSeen, fmtBytes, fmtDuration, confirmDialog, debounce, beep, getPrefs, setPrefs,

@@ -3,7 +3,7 @@
 // ============================================================
 import {
   resolveConfig, saveConfig, initClient, state, dbApi, authApi, getSb, chatTitleFor, memberProfile,
-} from './api.js';
+} from './api.js?v=26';
 import { qs, bus, toast, beep, getPrefs } from './utils.js';
 import { v20Boot } from './v20.js';
 import { v21Boot } from './v21.js';

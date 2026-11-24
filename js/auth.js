@@ -1,5 +1,5 @@
 // Экраны входа: вход, регистрация, подтверждение почты, восстановление пароля
-import { authApi, dbApi } from './api.js';
+import { authApi, dbApi } from './api.js?v=26';
 import { qs, qsa, toast, bus } from './utils.js';
 
 const ERRORS = [

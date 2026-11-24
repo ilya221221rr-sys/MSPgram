@@ -5,7 +5,7 @@
 //  • Ctrl/⌘+K — быстрый переход              • объявления от админов
 //  • плашка «Нет соединения»                 • тёмные скины и обои
 // ============================================================
-import { getSb, state, memberProfile } from './api.js';
+import { getSb, state, memberProfile } from './api.js?v=26';
 import { qs, esc, el, bus, getPrefs, setPrefs, avatarHTML } from './utils.js';
 import { applyAppearance } from './appearance.js';
 import { openPalette } from './palette.js';

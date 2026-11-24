@@ -79,8 +79,14 @@ export const authApi = {
     const redirectTo = location.origin + location.pathname;
     return await _sb.auth.resetPasswordForEmail(email, { redirectTo });
   },
-  // Смена пароля (в том числе после перехода по ссылке восстановления)
+  // Смена пароля (в том числе после перехода по ссылке восстановления).
+  // Без сессии gotrue отвечает «Auth session missing!» — даём понятный текст:
+  // значит ссылка из письма просрочена/использована или страница была из кэша.
   async updatePassword(password) {
+    const { data } = await _sb.auth.getSession();
+    if (!data?.session) {
+      return { data: null, error: { message: 'Сессия восстановления не найдена. Открой ссылку из письма заново (она одноразовая и живёт 1 час) — или запроси письмо ещё раз.' } };
+    }
     return await _sb.auth.updateUser({ password });
   },
   // Повторная отправка письма подтверждения регистрации

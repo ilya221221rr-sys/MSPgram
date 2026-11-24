@@ -2,7 +2,7 @@
 //  Диагностика ИИ (v19): самотест, журнал ошибок, пресеты.
 //  Открывается из Настройки → ИИ и из Админ-панели → «ИИ».
 // ============================================================
-import { getSb } from './api.js';
+import { getSb } from './api.js?v=26';
 import { qs, esc, el, toast, getPrefs, setPrefs } from './utils.js';
 import {
   getAiLog, clearAiLog, runAiTest, buildReport, normalizeAiUrl, maskKey, liveFreeModels, OR_URL,
