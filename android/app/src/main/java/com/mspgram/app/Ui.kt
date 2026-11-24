@@ -439,43 +439,47 @@ fun ServerRail(
     onServer: (Chat) -> Unit,
     onAdd: () -> Unit,
 ) {
+    val wide = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp > 900
+    val railWidth = if (wide) 74.dp else 58.dp
+    val buttonSize = if (wide) 50.dp else 42.dp
+    val buttonRadius = if (wide) 16.dp else 13.dp
     Column(
-        Modifier.width(58.dp).fillMaxHeight().background(RailBg),
+        Modifier.width(railWidth).fillMaxHeight().background(RailBg)
+            .verticalScroll(androidx.compose.foundation.rememberScrollState())
+            .padding(vertical = if (wide) 12.dp else 12.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Spacer(Modifier.height(10.dp))
-        // rail-btn.home: градиент + логотип
+        // Размеры повторяют style.css: 74/50 px на широких экранах и 58/42 px на телефонах.
         Box(
-            Modifier.size(42.dp).background(
+            Modifier.size(buttonSize).background(
                 Brush.linearGradient(listOf(accentColor(Prefs.get().accent), Accent2)),
-                RoundedCornerShape(13.dp),
+                RoundedCornerShape(buttonRadius),
             ).clickable { onHome() },
             contentAlignment = Alignment.Center,
-        ) { Text("✈️", fontSize = 20.sp) }
-        Spacer(Modifier.height(6.dp))
+        ) { Text("✈️", fontSize = if (wide) 24.sp else 20.sp) }
+        Spacer(Modifier.height(8.dp))
         Box(Modifier.width(32.dp).height(2.dp).background(LineC, RoundedCornerShape(1.dp)))
-        Spacer(Modifier.height(6.dp))
-        // серверы: сквиркл 42, активный — кольцо акцента, badge непрочитанных (rail-badge)
+        Spacer(Modifier.height(8.dp))
         servers.forEach { c ->
             val active = activeChatId == c.id
             val cnt = unread[c.id] ?: 0
             Box {
                 Box(
-                    Modifier.size(42.dp).background(DarkSurface2, RoundedCornerShape(13.dp))
-                        .then(if (active) Modifier.border(2.dp, accentColor(Prefs.get().accent), RoundedCornerShape(13.dp)) else Modifier)
+                    Modifier.size(buttonSize).background(DarkSurface2, RoundedCornerShape(buttonRadius))
+                        .then(if (active) Modifier.border(2.dp, accentColor(Prefs.get().accent), RoundedCornerShape(buttonRadius)) else Modifier)
                         .clickable { onServer(c) },
                     contentAlignment = Alignment.Center,
                 ) {
                     if (c.avatar_url != null) {
                         coil.compose.AsyncImage(model = c.avatar_url, contentDescription = null,
                             contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                            modifier = Modifier.size(42.dp).background(DarkSurface2, RoundedCornerShape(13.dp)))
+                            modifier = Modifier.size(buttonSize).background(DarkSurface2, RoundedCornerShape(buttonRadius)))
                     } else {
-                        Text((c.title ?: "С").take(1).uppercase(), color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
+                        Text((c.title ?: "С").take(1).uppercase(), color = Color.White, fontWeight = FontWeight.ExtraBold,
+                            fontSize = if (wide) 19.sp else 16.sp)
                     }
                 }
                 if (cnt > 0) {
-                    // rail-badge: 18dp круг danger, граница 2px цветом рейла
                     Box(Modifier.align(Alignment.TopEnd).offset(x = 2.dp, y = (-2).dp)
                         .size(18.dp).background(DangerColor, CircleShape)
                         .border(2.dp, RailBg, CircleShape), contentAlignment = Alignment.Center) {
@@ -485,13 +489,12 @@ fun ServerRail(
             }
             Spacer(Modifier.height(6.dp))
         }
-        // rail-btn.add: пунктирная рамка, зелёный ＋
         Box(
-            Modifier.size(42.dp).background(Color.Transparent, RoundedCornerShape(13.dp))
-                .border(1.dp, LineC, RoundedCornerShape(13.dp))
+            Modifier.size(buttonSize).background(Color.Transparent, RoundedCornerShape(buttonRadius))
+                .border(1.dp, LineC, RoundedCornerShape(buttonRadius))
                 .clickable { onAdd() },
             contentAlignment = Alignment.Center,
-        ) { Text("＋", color = OkColor, fontSize = 20.sp, fontWeight = FontWeight.Bold) }
+        ) { Text("＋", color = OkColor, fontSize = if (wide) 24.sp else 20.sp, fontWeight = FontWeight.Bold) }
     }
 }
 
