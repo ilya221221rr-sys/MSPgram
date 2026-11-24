@@ -80,7 +80,7 @@ object Ai {
     /** Краткий пересказ переписки (кнопка ✨ в шапке чата) */
     suspend fun summarize(chatTitle: String, msgs: List<Message>): String {
         val text = msgs.takeLast(40).joinToString("\n") { m ->
-            val who = chatById(m.chat_id)?.members?.firstOrNull { it.user_id == m.sender_id }?.profiles?.name ?: "Кто-то"
+            val who = Supa.chatById(m.chat_id)?.members?.firstOrNull { it.user_id == m.sender_id }?.profiles?.name ?: "Кто-то"
             "$who: ${m.body ?: m.attachment_name ?: ""}"
         }
         return chat(listOf(
