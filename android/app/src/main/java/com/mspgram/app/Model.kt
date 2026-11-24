@@ -72,6 +72,7 @@ data class Chat(
 ) {
     fun isSaved() = is_saved || (type == "direct" && members.size == 1)
     fun myFlags(meId: String): Member? = members.firstOrNull { it.user_id == meId }
+    fun flagsPinned(meId: String): Boolean = myFlags(meId)?.pinned == true
     fun otherMember(meId: String): Profile? =
         members.firstOrNull { it.user_id != meId }?.profiles
     fun titleFor(meId: String): String = when {

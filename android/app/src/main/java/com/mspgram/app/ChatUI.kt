@@ -9,6 +9,7 @@ import android.net.Uri
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -27,7 +28,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -196,12 +199,13 @@ fun ChatScreen(me: Profile, chatId: String, onBack: () -> Unit) {
     val canPost = Supa.canPostIn(chat)
 
     Column(Modifier.fillMaxSize().background(DarkBg)) {
-        // ---------- шапка ----------
+        // ---------- шапка: .chat-head (panel, линия снизу) ----------
+        Column(Modifier.fillMaxWidth().background(DarkSurface).border(1.dp, LineC).padding(vertical = 8.dp)) {
         Row(
-            Modifier.fillMaxWidth().background(DarkSurface).padding(horizontal = 4.dp, vertical = 8.dp),
+            Modifier.fillMaxWidth().padding(horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            TextButton(onClick = onBack) { Text("←", color = acc, fontSize = 20.sp) }
+            IconBtn("←", size = 20) { onBack() }
             Row(Modifier.weight(1f).clickable {
                 if (chat.type == "direct") {
                     chat.otherMember(me.id)?.let { ProfileSheet.open(it.id) }
@@ -209,57 +213,42 @@ fun ChatScreen(me: Profile, chatId: String, onBack: () -> Unit) {
                     infoOpen = true
                 }
             }) {
-                Avatar(chat.titleFor(me.id), 36.dp, chat.avatar_url ?: chat.otherMember(me.id)?.avatar_url)
+                Avatar(chat.titleFor(me.id), 40.dp, chat.avatar_url ?: chat.otherMember(me.id)?.avatar_url,
+                    presence = if (chat.type == "direct") Supa.presenceOf(chat.otherMember(me.id)) else null)
                 Spacer(Modifier.width(10.dp))
                 Column {
-                    Text(chat.titleFor(me.id), color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(chat.titleFor(me.id), color = TextC, fontWeight = FontWeight.Bold, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     val sub = ChatSession.typingText().ifBlank {
                         if (chat.type == "direct") {
                             val o = chat.otherMember(me.id)
-                            "@${o?.nickname} · ${relLastSeen(o?.last_seen, Supa.presenceOf(o))}"
+                            relLastSeen(o?.last_seen, Supa.presenceOf(o))
                         } else {
-                            "#${channels.firstOrNull { it.id == ChatSession.channelId.value }?.name ?: "общий"} · ${chat.members.size} ${pluralRu(chat.members.size)}"
+                            "${chat.members.size} ${pluralRu(chat.members.size)} · ${channels.size} канал(ов)"
                         }
                     }
-                    Text(sub, color = if (ChatSession.typingText().isNotEmpty()) acc else MutedText, fontSize = 11.sp, maxLines = 1)
+                    Text(sub, color = if (ChatSession.typingText().isNotEmpty()) acc else MutedText, fontSize = 11.5.sp, maxLines = 1)
                 }
             }
-            // звонки: личные; голосовой канал: серверы (как updateCallButtons)
+            // каналы сервера — пилюля в шапке (#channel-pill)
+            if (chat.type == "group" && channels.size > 1) {
+                Text(
+                    "#${channels.firstOrNull { it.id == ChatSession.channelId.value }?.name ?: "общий"}",
+                    fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = TextC,
+                    modifier = Modifier.background(DarkSurface2, RoundedCornerShape(50))
+                        .clickable { infoOpen = true }.padding(horizontal = 10.dp, vertical = 5.dp),
+                )
+            }
+            // icon-btn справа: звонки / ИИ / поиск / инфо
             if (chat.type == "direct" && !chat.isSaved()) {
-                Text("📞", fontSize = 18.sp, modifier = Modifier
-                    .clickable { Calls.startCall(chat, false, ctx) { p -> callPerms.launch(p.toTypedArray()) } }.padding(horizontal = 6.dp))
-                Text("📹", fontSize = 18.sp, modifier = Modifier
-                    .clickable { Calls.startCall(chat, true, ctx) { p -> callPerms.launch(p.toTypedArray()) } }.padding(horizontal = 6.dp))
+                IconBtn("📞") { Calls.startCall(chat, false, ctx) { p -> callPerms.launch(p.toTypedArray()) } }
+                IconBtn("📹") { Calls.startCall(chat, true, ctx) { p -> callPerms.launch(p.toTypedArray()) } }
             } else if (chat.type == "group") {
-                Text(if (Calls.state.inVoice.value) "🎙✓" else "🎙", fontSize = 18.sp, modifier = Modifier
-                    .clickable { askMic { Calls.joinVoice(chat, ctx) {} } }.padding(horizontal = 6.dp))
+                IconBtn(if (Calls.state.inVoice.value) "🎙" else "🎙") { askMic { Calls.joinVoice(chat, ctx) {} } }
             }
-            Text("✨", fontSize = 18.sp, modifier = Modifier.clickable { aiSummarize = true }.padding(horizontal = 6.dp))
-            Text("🔍", fontSize = 17.sp, modifier = Modifier.clickable { searchOpen = true }.padding(horizontal = 6.dp))
+            IconBtn("✨") { aiSummarize = true }
+            IconBtn("🔍", size = 17) { searchOpen = true }
+            IconBtn("⋯", size = 19) { infoOpen = true }
         }
-
-        // каналы сервера (пилюля)
-        if (chat.type == "group" && channels.size > 1) {
-            Row(Modifier.fillMaxWidth().background(DarkBg).padding(horizontal = 12.dp)) {
-                channels.forEach { ch ->
-                    Surface(
-                        color = if (ch.id == ChatSession.channelId.value) acc else DarkSurface2,
-                        shape = RoundedCornerShape(8.dp),
-                    ) {
-                        Text("#${ch.name}", fontSize = 12.sp, color = if (ch.id == ChatSession.channelId.value) Color.White else MutedText,
-                            modifier = Modifier.clickable {
-                                ChatSession.channelId.value = ch.id
-                                scope.launch {
-                                    try {
-                                        ChatSession.messages.value = Supa.loadMessages(chatId, ch.id)
-                                        Supa.loadReactions(ChatSession.messages.value.map { it.id })
-                                    } catch (_: Exception) { }
-                                }
-                            }.padding(horizontal = 10.dp, vertical = 5.dp))
-                    }
-                    Spacer(Modifier.width(6.dp))
-                }
-            }
         }
 
         // закреплённое сообщение
@@ -303,10 +292,7 @@ fun ChatScreen(me: Profile, chatId: String, onBack: () -> Unit) {
             items(ChatSession.messages.value) { m ->
                 val prev = ChatSession.messages.value.getOrNull(ChatSession.messages.value.indexOf(m) - 1)
                 if (prev == null || dayKey(prev.created_at) != dayKey(m.created_at)) {
-                    Text(
-                        fmtDay(m.created_at), color = MutedText, fontSize = 11.sp,
-                        modifier = Modifier.align2(),
-                    )
+                    DaySep(fmtDay(m.created_at))
                 }
                 MsgRow(me, chat, m,
                     revVersion = ChatSession.version.value,
@@ -333,12 +319,18 @@ fun ChatScreen(me: Profile, chatId: String, onBack: () -> Unit) {
 
         // ---------- композер ----------
         replyTo?.let { rt ->
-            Row(Modifier.fillMaxWidth().background(DarkSurface2).padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("Ответ ${senderName(chat, rt)}", color = acc, fontSize = 11.sp)
-                    Text(previewOf(rt), color = MutedText, fontSize = 12.sp, maxLines = 1)
+            Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                // reply-bar-inner: панелька с акцентной полосой слева (border-left 3px)
+                Row(Modifier.weight(1f).background(DarkSurface2, RoundedCornerShape(10.dp))
+                    .border(1.dp, LineC, RoundedCornerShape(10.dp))
+                    .padding(horizontal = 12.dp, vertical = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Ответ ${senderName(chat, rt)}", color = acc, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text(previewOf(rt), color = MutedText, fontSize = 12.5.sp, maxLines = 1)
+                    }
+                    Text("✕", color = MutedText, fontSize = 13.sp, modifier = Modifier.clickable { replyTo = null }.padding(4.dp))
                 }
-                Text("✕", color = MutedText, modifier = Modifier.clickable { replyTo = null })
             }
         }
         editing?.let { ed ->
@@ -427,53 +419,69 @@ fun ChatScreen(me: Profile, chatId: String, onBack: () -> Unit) {
         }
 
         Row(
-            Modifier.fillMaxWidth().background(DarkSurface).padding(8.dp).imePadding(),
-            verticalAlignment = Alignment.CenterVertically,
+            Modifier.fillMaxWidth().background(DarkSurface)
+                .border(1.dp, LineC, RectangleShape)
+                .padding(horizontal = 6.dp, vertical = 8.dp)
+                .imePadding(),
+            verticalAlignment = Alignment.Bottom,
         ) {
             if (!canPost) {
-                Text("🔒 В этом чате писать могут только администраторы", color = MutedText, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                Text("🔒 В этом чате писать могут только администраторы", color = MutedText, fontSize = 13.sp, modifier = Modifier.weight(1f).padding(horizontal = 8.dp))
             } else {
-                Text("📎", fontSize = 19.sp, modifier = Modifier.clickable { pickFile.launch("*/*") }.padding(horizontal = 5.dp))
-                Text("🙂", fontSize = 19.sp, modifier = Modifier.clickable { stickersOpen = !stickersOpen; gifsOpen = false }.padding(horizontal = 5.dp))
-                Text("GIF", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = acc,
-                    modifier = Modifier.clickable { gifsOpen = !gifsOpen; stickersOpen = false }.padding(horizontal = 5.dp))
-                // ИИ-помощь (🪄 как на сайте)
-                Text("🪄", fontSize = 18.sp, modifier = Modifier.clickable { aiWrite = true }.padding(horizontal = 5.dp))
+                IconBtn("📎", size = 19) { pickFile.launch("*/*") }
+                IconBtn("🙂", size = 19) { stickersOpen = !stickersOpen; gifsOpen = false }
+                IconBtn("GIF", size = 14) { gifsOpen = !gifsOpen; stickersOpen = false }
+                IconBtn("🪄", size = 18) { aiWrite = true }
                 OutlinedTextField(
                     value = input, onValueChange = { v ->
                         input = v; DraftStore.set(chatId, v); sendTyping()
-                        // подсказки @упоминаний (v19)
                         val at = v.lastIndexOf('@')
                         mentionQuery = if (at >= 0 && v.indexOf(' ', at) < 0) v.substring(at + 1) else null
                     },
-                    placeholder = { Text("Сообщение…", color = MutedText) },
+                    placeholder = { Text("Сообщение…", color = Color(0xFF5C688A), fontSize = 15.sp) },
                     modifier = Modifier.weight(1f), maxLines = 4,
+                    shape = RoundedCornerShape(22.dp),
+                    colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = acc,
+                        unfocusedBorderColor = LineC,
+                        focusedContainerColor = DarkSurface2,
+                        unfocusedContainerColor = DarkSurface2,
+                        focusedTextColor = TextC,
+                        unfocusedTextColor = TextC,
+                        cursorColor = acc,
+                    ),
                 )
                 if (input.isNotBlank()) {
-                    Text("➤", fontSize = 20.sp, color = acc, modifier = Modifier.clickable {
-                        val text = input.trim()
-                        val isEdit = editing
-                        input = ""
-                        DraftStore.clear(chatId)
-                        mentionQuery = null
-                        scope.launch {
-                            try {
-                                if (isEdit != null) {
-                                    val m = Supa.editMessage(isEdit.id, text)
-                                    ChatSession.onEditMessage(m)
-                                    editing = null
-                                } else {
-                                    val m = Supa.sendMessage(chatId, ChatSession.channelId.value, text, replyTo?.id)
-                                    replyTo = null
-                                    ChatSession.onNewMessage(m)
-                                }
-                            } catch (e: Exception) { err = e.message ?: "Не отправилось"; input = text }
-                        }
-                    }.padding(horizontal = 8.dp))
+                    // send-btn: круг 44, градиент, glow
+                    Box(
+                        Modifier.size(44.dp).background(
+                            Brush.linearGradient(listOf(acc, Accent2)), CircleShape,
+                        ).clickable {
+                            val text = input.trim()
+                            val isEdit = editing
+                            input = ""
+                            DraftStore.clear(chatId)
+                            mentionQuery = null
+                            scope.launch {
+                                try {
+                                    if (isEdit != null) {
+                                        val m = Supa.editMessage(isEdit.id, text)
+                                        ChatSession.onEditMessage(m)
+                                        editing = null
+                                    } else {
+                                        val m = Supa.sendMessage(chatId, ChatSession.channelId.value, text, replyTo?.id)
+                                        replyTo = null
+                                        ChatSession.onNewMessage(m)
+                                    }
+                                } catch (e: Exception) { err = e.message ?: "Не отправилось"; input = text }
+                            }
+                        },
+                        contentAlignment = Alignment.Center,
+                    ) { Text("➤", fontSize = 17.sp, color = Color.White) }
                 } else {
-                    // голосовое (тап → записать → тап → отправить)
+                    // голосовое (тап → записать → тап → отправить) — icon-btn
                     Text(if (recording) "⏹" else "🎤", fontSize = 19.sp,
-                        color = if (recording) DangerColor else Color.White,
+                        color = if (recording) DangerColor else MutedText,
                         modifier = Modifier.clickable {
                             if (!recording) {
                                 askMic {
@@ -704,11 +712,25 @@ fun MsgRow(
     Column(Modifier.fillMaxWidth().padding(vertical = 2.dp), horizontalAlignment = if (own) Alignment.End else Alignment.Start) {
         // день-разделитель рисуется вызывающим кодом
         if (!own && chat.type == "group") {
-            Text(senderName(chat, m), color = acc, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 12.dp))
+            Text(senderName(chat, m), color = acc, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 4.dp, top = 6.dp))
         }
         // свайп влево = ответить (v19)
     var swipeX by remember { mutableStateOf(0f) }
-    Box(Modifier.widthIn(max = 320.dp)
+    Row(
+        Modifier.fillMaxWidth(0.92f),
+        horizontalArrangement = if (own) Arrangement.End else Arrangement.Start,
+        verticalAlignment = Alignment.Bottom,
+    ) {
+        // хвост пузыря с противоположной стороны (msg::before/::after, clip-path)
+        if (!own) Box(Modifier.width(10.dp).height(12.dp)) {
+            Canvas(Modifier.fillMaxSize()) {
+                val path = androidx.compose.ui.graphics.Path().apply {
+                    moveTo(size.width, 0f); lineTo(size.width, size.height); lineTo(0f, size.height); close()
+                }
+                drawPath(path, InBubble)
+            }
+        }
+        Box(Modifier.weight(1f, fill = false)
             .offset(x = swipeX.dp)
             .pointerInput(m.id) {
                 detectHorizontalDragGestures(
@@ -723,15 +745,18 @@ fun MsgRow(
                 }
             }
             .combinedClickable(onClick = {}, onLongClick = onOpenMenu)) {
-            Surface(
-                color = if (own) acc.copy(alpha = 0.26f) else DarkSurface,
-                shape = if (Prefs.get().bubble == "round") RoundedCornerShape(16.dp) else RoundedCornerShape(
-                    topStart = 16.dp, topEnd = 16.dp,
-                    bottomStart = if (own) 16.dp else 4.dp,
-                    bottomEnd = if (own) 4.dp else 16.dp,
+            // .msg: radius 16; свой — градиент --out, чужой — --in; угол у хвоста 6
+            Box(
+                Modifier.background(
+                    if (own) outBubbleBrush() else Brush.linearGradient(listOf(InBubble, InBubble)),
+                    RoundedCornerShape(
+                        topStart = 16.dp, topEnd = 16.dp,
+                        bottomStart = if (!own) 6.dp else 16.dp,
+                        bottomEnd = if (own) 6.dp else 16.dp,
+                    ),
                 ),
             ) {
-                Column(Modifier.padding(horizontal = 12.dp, vertical = 7.dp)) {
+                Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
                     if (m.forwarded_from != null) {
                         Text("↪ Переслано от ${m.forwarded_from}", color = MutedText, fontSize = 11.sp)
                     }
@@ -811,20 +836,29 @@ fun MsgRow(
                         }
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                        if (m.edited_at != null) Text("изм. ", color = MutedText, fontSize = 10.sp)
-                        Text(fmtTime(m.created_at), color = MutedText, fontSize = 10.sp)
+                        if (m.edited_at != null) Text("изм. ", color = if (own) Color(0xFFE6ECFF).copy(alpha = 0.7f) else MutedText, fontSize = 10.sp)
+                        Text(fmtTime(m.created_at), color = if (own) Color(0xFFE6ECFF).copy(alpha = 0.7f) else MutedText, fontSize = 10.sp)
                         if (own) {
-                            // галочки прочтения (✓✓ как на сайте)
                             val othersRead = chat.members.any { x ->
                                 x.user_id != me.id && x.last_read_at != null && x.last_read_at!! >= m.created_at
                             }
-                            Text(if (othersRead) " ✓✓" else " ✓", color = if (othersRead) OkColor else MutedText, fontSize = 10.sp)
+                            Text(if (othersRead) " ✓✓" else " ✓", color = if (othersRead) Color.White else Color(0xFFE6ECFF).copy(alpha = 0.7f), fontSize = 10.sp)
                         }
                     }
                 }
             }
         }
+        // хвост своего пузыря (правый, #4d43d8)
+        if (own) Box(Modifier.width(10.dp).height(12.dp)) {
+            Canvas(Modifier.fillMaxSize()) {
+                val path = androidx.compose.ui.graphics.Path().apply {
+                    moveTo(0f, 0f); lineTo(size.width, size.height); lineTo(0f, size.height); close()
+                }
+                drawPath(path, Color(OUT_TAIL))
+            }
+        }
     }
+}
 }
 
 private fun Modifier.align2(): Modifier = this.then(

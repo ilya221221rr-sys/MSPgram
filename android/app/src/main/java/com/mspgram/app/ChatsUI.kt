@@ -12,6 +12,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -46,7 +47,8 @@ object FolderStore {
 @Composable
 fun ChatsScreen(me: Profile, onOpen: (String) -> Unit) {
     val version by Supa.chatListVersion.collectAsState()
-    var filter by remember { mutableStateOf("all") } // all | personal | servers | archive | f:<id>
+    var filter by remember { mutableStateOf("all") } // all | unread | direct | groups | archive | f:<id>
+    var searchQ by remember { mutableStateOf("") }
     var showSearch by remember { mutableStateOf(false) }
     var showNewServer by remember { mutableStateOf(false) }
     var editingFolder by remember { mutableStateOf<Folder?>(null) }
@@ -55,70 +57,93 @@ fun ChatsScreen(me: Profile, onOpen: (String) -> Unit) {
     LaunchedEffect(version) { }
 
     Column(Modifier.fillMaxSize().background(DarkBg)) {
-        // шапка
+        // sidebar-head (style.css): аватар-профиль, заголовок, ＋
         Row(
-            Modifier.fillMaxWidth().background(DarkSurface).padding(horizontal = 14.dp, vertical = 10.dp),
+            Modifier.fillMaxWidth().background(DarkSurface).padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Avatar(me.name, 36.dp, me.avatar_url, presence = if (Calls.state.inVoice.value) "online" else null)
+            Avatar(me.name, 34.dp, me.avatar_url, circle = true,
+                presence = if (Calls.state.inVoice.value) "online" else null)
             Spacer(Modifier.width(10.dp))
-            Column {
-                Text("MSPgram", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 17.sp)
-                Text("@${me.nickname}", color = MutedText, fontSize = 11.sp)
-            }
+            Text("MSPgram ", color = TextC, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            Text("v26", color = MutedText, fontSize = 12.sp)
             Spacer(Modifier.weight(1f))
-            Text("🌐", fontSize = 20.sp, modifier = Modifier.clickable { showNewServer = true })
-            Spacer(Modifier.width(14.dp))
-            Text("🔍", fontSize = 19.sp, modifier = Modifier.clickable { showSearch = true })
+            IconBtn("＋") { showNewServer = true }
+            IconBtn("🔍") { showSearch = true }
         }
 
-        // фильтры + папки (как list-filters на сайте)
+        // search-wrap: поле в panel2, radius 12
+        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
+            OutlinedTextField(
+                value = searchQ, onValueChange = { searchQ = it },
+                placeholder = { Text("Поиск…", color = Color(0xFF5C688A), fontSize = 14.sp) },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp),
+                colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = accentColor(Prefs.get().accent),
+                    unfocusedBorderColor = LineC,
+                    focusedContainerColor = DarkSurface2,
+                    unfocusedContainerColor = DarkSurface2,
+                    focusedTextColor = TextC,
+                    unfocusedTextColor = TextC,
+                    cursorColor = accentColor(Prefs.get().accent),
+                ),
+            )
+        }
+
+        // list-filters (v18.css lf-chip): Все/Непрочитанные/Личные/Группы + папки
+        val totalUnread = Supa.unread.values.sum()
         Row(
-            Modifier.fillMaxWidth().background(DarkBg).padding(horizontal = 8.dp, vertical = 6.dp),
+            Modifier.fillMaxWidth().background(DarkBg).padding(horizontal = 12.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            FilterChip2("Все", "all", filter) { filter = it }
-            FilterChip2("Личные", "personal", filter) { filter = it }
-            FilterChip2("Серверы", "servers", filter) { filter = it }
-            FilterChip2("🗄 Архив", "archive", filter) { filter = it }
+            LfChip("Все", filter == "all") { filter = "all" }
+            LfChip("Непрочитанные", filter == "unread", badge = totalUnread.toInt()) { filter = "unread" }
+            LfChip("Личные", filter == "direct") { filter = "direct" }
+            LfChip("Группы", filter == "groups") { filter = "groups" }
         }
         val folders = FolderStore.get()
-        if (folders.isNotEmpty() || filter.startsWith("f:")) {
+        if (folders.isNotEmpty() || true) {
             Row(
-                Modifier.fillMaxWidth().background(DarkBg).padding(horizontal = 8.dp).padding(bottom = 6.dp),
+                Modifier.fillMaxWidth().background(DarkBg).padding(horizontal = 12.dp).padding(bottom = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 folders.forEach { f ->
-                    Surface(
-                        color = if (filter == "f:${f.id}") accentColor(Prefs.get().accent).copy(alpha = 0.25f) else DarkSurface2,
-                        shape = RoundedCornerShape(8.dp),
+                    val on = filter == "f:${f.id}"
+                    Box(
+                        Modifier.background(
+                            if (on) Brush.linearGradient(listOf(accentColor(Prefs.get().accent), Accent2)) else Brush.linearGradient(listOf(DarkSurface2, DarkSurface2)),
+                            RoundedCornerShape(50),
+                        ).combinedClickable(
+                                onClick = { filter = "f:${f.id}" },
+                                onLongClick = { editingFolder = f },
+                            )
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
                     ) {
-                        Text(
-                            "${f.emoji} ${f.name}", fontSize = 12.sp, color = Color.White,
-                            modifier = Modifier
-                                .combinedClickable(
-                                    onClick = { filter = "f:${f.id}" },
-                                    onLongClick = { editingFolder = f },
-                                )
-                                .padding(horizontal = 10.dp, vertical = 6.dp),
-                        )
+                        Text("${f.emoji} ${f.name}", fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold,
+                            color = if (on) Color.White else MutedText)
                     }
                 }
-                Text("＋📁", fontSize = 15.sp, color = MutedText,
-                    modifier = Modifier.clickable { newFolder = true }.padding(horizontal = 4.dp, vertical = 6.dp))
+                Text("＋ Папка", fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = MutedText,
+                    modifier = Modifier.background(DarkSurface2, RoundedCornerShape(50))
+                        .clickable { newFolder = true }.padding(horizontal = 12.dp, vertical = 6.dp))
             }
         }
 
-        // список
+        // список (как renderChatList: 📌 закреплённые, чаты, 🗄 архив)
         val meId = me.id
-        val all = Supa.chats
+        val all = Supa.chats.filter { q2 ->
+            searchQ.isBlank() || q2.titleFor(meId).lowercase().contains(searchQ.lowercase())
+        }
         val flags = { c: Chat -> c.myFlags(meId) }
         val active = all.filter { flags(it)?.archived != true }
         val archived = all.filter { flags(it)?.archived == true }
         val pinned = active.filter { flags(it)?.pinned == true }
         val filteredBase = when (filter) {
-            "personal" -> active.filter { it.type != "group" }
-            "servers" -> active.filter { it.type == "group" }
+            "unread" -> active.filter { c -> (Supa.unread[c.id] ?: 0L) > 0 }
+            "direct" -> active.filter { it.type != "group" }
+            "groups" -> active.filter { it.type == "group" }
             "archive" -> archived
             else -> if (filter.startsWith("f:")) {
                 val f = folders.firstOrNull { "f:${it.id}" == filter }
@@ -126,20 +151,24 @@ fun ChatsScreen(me: Profile, onOpen: (String) -> Unit) {
             } else active
         }
         val rest = filteredBase.filter { c -> pinned.none { it.id == c.id } }
+            .sortedByDescending { it.last_message_at ?: "" }
 
         LazyColumn(Modifier.fillMaxSize()) {
-            if (filter != "archive" && pinned.isNotEmpty()) {
+            if (filter == "all" && pinned.isNotEmpty()) {
                 item { Section("📌") }
                 items(pinned) { c -> ChatRow(meId, c, onOpen, unreadIn = (Supa.unread[c.id] ?: 0L).toInt(), typingIn = ChatSession.typingIn(c.id)) }
             }
-            items(rest.sortedByDescending { it.last_message_at ?: "" }) { c ->
+            items(rest) { c ->
                 ChatRow(meId, c, onOpen, unreadIn = (Supa.unread[c.id] ?: 0L).toInt(), typingIn = ChatSession.typingIn(c.id))
             }
-            if (filter == "archive" && archived.isEmpty()) item { Empty("Архив пуст") }
-            if (all.isEmpty()) item {
+            if (filter == "all" && archived.isNotEmpty()) {
+                item { Section("🗄 Архив (${archived.size})") }
+                items(archived) { c -> ChatRow(meId, c, onOpen, unreadIn = (Supa.unread[c.id] ?: 0L).toInt(), typingIn = ChatSession.typingIn(c.id)) }
+            }
+            if (all.isEmpty() && searchQ.isBlank()) item {
                 Empty("Пока пусто 🙁\n\nНайди друзей через 🔍 — поиск людей,\nсообществ и сообщений.")
             }
-            item { Spacer(Modifier.size(80.dp)) }
+            item { Spacer(Modifier.size(90.dp)) } // место под док
         }
     }
 
@@ -189,57 +218,70 @@ fun ChatRow(meId: String, chat: Chat, onOpen: (String) -> Unit, unreadIn: Int = 
     val presence = if (chat.type == "direct") Supa.presenceOf(other) else null
     val title = chat.titleFor(meId)
     val mine = chat.last_message_sender == meId
-    var preview = chat.last_message_text ?: "Напиши первое сообщение"
-    if (mine && chat.last_message_text != null) preview = "Вы: $preview"
-    val draft = DraftStore.get(chat.id)
-    if (draft.isNotBlank()) preview = "Черновик: ${draft.take(40)}"
+    var preview = chat.last_message_text ?: ""
     val unreadCnt = unreadIn
     val muted = chat.myFlags(meId)?.muted == true
     val typing = typingIn
 
+    // chat-row (style.css + v18.css): radius 14, padding 10/11, title 15/600,
+    // Вы: акцентным, бейдж — градиентная пилюля
     Row(
         Modifier.fillMaxWidth().background(DarkBg)
             .clickable { onOpen(chat.id) }
-            .padding(horizontal = 14.dp, vertical = 9.dp),
+            .padding(horizontal = 11.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (chat.isSaved()) {
-            Box(Modifier.size(48.dp).background(DarkSurface2, CircleShape), contentAlignment = Alignment.Center) {
-                Text("🔖", fontSize = 20.sp)
+            Box(Modifier.size(46.dp).background(DarkSurface2, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
+                Text("🔖", fontSize = 19.sp)
             }
         } else {
-            Avatar(title, 48.dp, chat.avatar_url ?: other?.avatar_url, presence = presence)
+            Avatar(title, 46.dp, chat.avatar_url ?: other?.avatar_url, presence = if (chat.type == "direct") presence else null)
         }
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(11.dp))
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(title, color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    (if (chat.flagsPinned(meId)) "📌 " else "") + title,
+                    color = TextC,
+                    fontWeight = if (unreadCnt > 0) FontWeight.ExtraBold else FontWeight.SemiBold,
+                    fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                )
+                if (muted) { Spacer(Modifier.width(4.dp)); Text("🔕", fontSize = 11.sp) }
                 Spacer(Modifier.weight(1f))
-                Text(fmtTime(chat.last_message_at ?: ""), color = MutedText, fontSize = 11.sp)
+                val time = fmtTime(chat.last_message_at ?: "")
+                if (time.isNotEmpty()) {
+                    Text(time, color = if (unreadCnt > 0) accentColor(Prefs.get().accent) else MutedText,
+                        fontSize = 11.sp, fontWeight = if (unreadCnt > 0) FontWeight.Bold else FontWeight.Normal)
+                }
             }
+            Spacer(Modifier.height(3.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (typing.isNotEmpty()) {
                     Text(typing, color = accentColor(Prefs.get().accent), fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 } else {
-                    Text(preview, color = MutedText, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-                Spacer(Modifier.weight(1f))
-                if (muted) Text("🔕", fontSize = 11.sp)
-                if (unreadCnt > 0) {
-                    Spacer(Modifier.width(6.dp))
-                    Box(Modifier.size(20.dp).background(accentColor(Prefs.get().accent), CircleShape), contentAlignment = Alignment.Center) {
-                        Text(if (unreadCnt > 99) "99+" else "$unreadCnt", color = Color.White, fontSize = 10.sp)
+                    Row {
+                        if (mine && chat.last_message_text != null) {
+                            Text("Вы: ", color = accentColor(Prefs.get().accent), fontSize = 13.sp)
+                        }
+                        Text(
+                            preview.ifBlank { if (chat.last_message_text == null) "Напиши первое сообщение" else "" },
+                            color = if (unreadCnt > 0) TextC else MutedText,
+                            fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        )
                     }
                 }
-            }
-            // мета: @ник и когда был(а) / участники сервера
-            if (chat.type == "direct" && !chat.isSaved() && other != null) {
-                Text(
-                    "@${other.nickname} · ${lastSeenShort(other.last_seen, presence)}",
-                    color = MutedText, fontSize = 11.sp,
-                )
-            } else if (chat.type == "group") {
-                Text("${chat.members.size} участник${pluralRu(chat.members.size)} · #${"общий"}", color = MutedText, fontSize = 11.sp)
+                Spacer(Modifier.weight(1f))
+                if (unreadCnt > 0) {
+                    Box(
+                        Modifier.background(
+                            if (muted) MutedText else Brush.linearGradient(listOf(accentColor(Prefs.get().accent), Accent2)),
+                            RoundedCornerShape(10.dp),
+                        ).padding(horizontal = 7.dp, vertical = 1.dp),
+                    ) {
+                        Text(if (unreadCnt > 99) "99+" else "$unreadCnt", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
             }
         }
     }

@@ -9,7 +9,9 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,6 +31,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Button
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
@@ -39,6 +42,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -108,49 +112,97 @@ fun LoginScreen(onEnter: () -> Unit) {
     var busy by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
+    // auth-hero + auth-card (style.css): логотип, слоган, карточка с табами
     Column(
-        Modifier.fillMaxSize().background(DarkBg).padding(24.dp),
+        Modifier.fillMaxSize().background(DarkBg).padding(20.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text("MSPgram", fontSize = 34.sp, fontWeight = FontWeight.Bold, color = accentColor(Prefs.get().accent))
-        Text("Нативный мессенджер", fontSize = 13.sp, color = MutedText)
-        Spacer(Modifier.size(28.dp))
-        if (mode == "signup") {
-            OutlinedTextField(
-                value = nick, onValueChange = { nick = it },
-                label = { Text("Ник (латиница)") }, singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Spacer(Modifier.size(10.dp))
-        }
-        OutlinedTextField(value = email, onValueChange = { email = it }, label = { Text("Email") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        Spacer(Modifier.size(10.dp))
-        OutlinedTextField(value = pass, onValueChange = { pass = it }, label = { Text("Пароль") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        if (err.isNotEmpty()) {
-            Spacer(Modifier.size(10.dp))
-            Text(err, color = DangerColor, fontSize = 13.sp)
-        }
-        Spacer(Modifier.size(18.dp))
-        if (busy) {
-            CircularProgressIndicator(color = accentColor(Prefs.get().accent))
-        } else {
-            Button(
-                onClick = {
-                    busy = true; err = ""
-                    scope.launch {
-                        try {
-                            if (mode == "login") Supa.signIn(email.trim(), pass)
-                            else Supa.signUp(email.trim(), pass, nick.trim())
-                            onEnter()
-                        } catch (e: Exception) { err = e.message ?: "Ошибка" }
-                        busy = false
+        Text("✈️", fontSize = 44.sp)
+        Text("MSPgram", fontSize = 32.sp, fontWeight = FontWeight.ExtraBold, color = TextC)
+        Text(
+            "Мессенджер нового поколения.\nСерверы и каналы — как в Discord.\nСкорость и удобство — как в Telegram.",
+            fontSize = 13.sp, color = MutedText, lineHeight = 19.sp,
+            modifier = Modifier.padding(vertical = 10.dp),
+        )
+        Spacer(Modifier.size(8.dp))
+        Column(
+            Modifier.fillMaxWidth()
+                .background(Color(0xE6111827), RoundedCornerShape(22.dp))
+                .border(1.dp, Color(0x405D6EA0), RoundedCornerShape(22.dp))
+                .padding(horizontal = 26.dp, vertical = 30.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            // табы Вход/Регистрация (.tabs/.tab)
+            Row(Modifier.fillMaxWidth().background(DarkSurface2, RoundedCornerShape(12.dp)).padding(4.dp)) {
+                listOf("login" to "Вход", "signup" to "Регистрация").forEach { (key, label) ->
+                    Box(
+                        Modifier.weight(1f)
+                            .background(if (mode == key) HoverC else Color.Transparent, RoundedCornerShape(9.dp))
+                            .clickable { mode = key; err = "" }
+                            .padding(vertical = 9.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(label, fontWeight = FontWeight.SemiBold, fontSize = 14.sp,
+                            color = if (mode == key) TextC else MutedText)
                     }
-                },
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text(if (mode == "login") "Войти" else "Создать аккаунт") }
-            TextButton(onClick = { mode = if (mode == "login") "signup" else "login"; err = "" }) {
-                Text(if (mode == "login") "Нет аккаунта? Зарегистрироваться" else "У меня есть аккаунт — войти")
+                }
+            }
+            Spacer(Modifier.size(16.dp))
+            val fieldColors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = accentColor(Prefs.get().accent),
+                unfocusedBorderColor = LineC,
+                focusedContainerColor = DarkSurface2,
+                unfocusedContainerColor = DarkSurface2,
+                focusedTextColor = TextC,
+                unfocusedTextColor = TextC,
+                cursorColor = accentColor(Prefs.get().accent),
+            )
+            if (mode == "signup") {
+                OutlinedTextField(
+                    value = nick, onValueChange = { nick = it },
+                    label = { Text("Ник (латиница)", color = MutedText) }, singleLine = true,
+                    modifier = Modifier.fillMaxWidth(), colors = fieldColors,
+                    shape = RoundedCornerShape(10.dp),
+                )
+                Spacer(Modifier.size(10.dp))
+            }
+            OutlinedTextField(value = email, onValueChange = { email = it }, label = { Text("Email", color = MutedText) },
+                singleLine = true, modifier = Modifier.fillMaxWidth(), colors = fieldColors, shape = RoundedCornerShape(10.dp))
+            Spacer(Modifier.size(10.dp))
+            OutlinedTextField(value = pass, onValueChange = { pass = it }, label = { Text("Пароль", color = MutedText) },
+                singleLine = true, modifier = Modifier.fillMaxWidth(), colors = fieldColors, shape = RoundedCornerShape(10.dp))
+            if (err.isNotEmpty()) {
+                Spacer(Modifier.size(10.dp))
+                Text(err, color = Color(0xFFFF8F92), fontSize = 13.sp)
+            }
+            Spacer(Modifier.size(18.dp))
+            if (busy) {
+                CircularProgressIndicator(color = accentColor(Prefs.get().accent))
+            } else {
+                Box(Modifier.fillMaxWidth().height(46.dp).background(
+                        Brush.linearGradient(listOf(accentColor(Prefs.get().accent), Accent2)),
+                        RoundedCornerShape(10.dp),
+                    ).clickable {
+                        busy = true; err = ""
+                        scope.launch {
+                            try {
+                                if (mode == "login") Supa.signIn(email.trim(), pass)
+                                else Supa.signUp(email.trim(), pass, nick.trim())
+                                onEnter()
+                            } catch (e: Exception) { err = e.message ?: "Ошибка" }
+                            busy = false
+                        }
+                    }, contentAlignment = Alignment.Center) {
+                    Text(if (mode == "login") "Войти" else "Создать аккаунт",
+                        color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                }
+                Spacer(Modifier.size(10.dp))
+                Text(
+                    if (mode == "login") "Нет аккаунта? Зарегистрироваться" else "У меня есть аккаунт — войти",
+                    color = accentColor(Prefs.get().accent), fontSize = 13.sp,
+                    modifier = Modifier.clickable { mode = if (mode == "login") "signup" else "login"; err = "" }.padding(6.dp),
+                )
             }
         }
     }
@@ -321,8 +373,29 @@ fun MainScreen(me: Profile, jumpChat: String?, onLogout: () -> Unit) {
         }
     }
 
-    // ---------- контент ----------
+    // ---------- контент: рейл + содержимое (раскладка сайта) ----------
     Box(Modifier.fillMaxSize().background(DarkBg)) {
+        val chatOpen = openChatId != null
+        if (!chatOpen) {
+            Row(Modifier.fillMaxSize()) {
+                val railVersion by Supa.chatListVersion.collectAsState() // подписка: рейл живёт вместе со списком
+                ServerRail(
+                    servers = Supa.chats.filter { it.type == "group" && it.myFlags(me.id)?.archived != true }.also { railVersion },
+                    activeChatId = null,
+                    onHome = { tab = 0 },
+                    onServer = { c -> openChatId = c.id },
+                    onAdd = { /* диалог нового сервера открывается из списка чатов */ scope.launch { } },
+                )
+                Box(Modifier.weight(1f)) {
+                    when (tab) {
+                        0 -> ChatsScreen(me, onOpen = { openChatId = it })
+                        1 -> FriendsScreen(me, onOpenChat = { openChatId = it }, onOpenProfile = { ProfileSheet.open(it) })
+                        2 -> AiScreen(me)
+                        3 -> SettingsScreen(me, onLogout = onLogout, onOpenAdmin = { adminOpen = true })
+                    }
+                }
+            }
+        }
         // объявление от админов (v19: ann-banner)
         announcement?.let { ann ->
             val icon = when (ann.level) { "warn" -> "⚠️"; "critical" -> "🛑"; else -> "📣" }
@@ -363,13 +436,6 @@ fun MainScreen(me: Profile, jumpChat: String?, onLogout: () -> Unit) {
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp))
             }
         }
-        when (tab) {
-            0 -> ChatsScreen(me, onOpen = { openChatId = it })
-            1 -> FriendsScreen(me, onOpenChat = { openChatId = it }, onOpenProfile = { ProfileSheet.open(it) })
-            2 -> AiScreen(me)
-            3 -> SettingsScreen(me, onLogout = onLogout, onOpenAdmin = { adminOpen = true })
-        }
-
         if (adminOpen && me.is_admin) {
             AdminScreen(me, onClose = { adminOpen = false }, onOpenChat = { adminOpen = false; openChatId = it })
         }
@@ -384,6 +450,29 @@ fun MainScreen(me: Profile, jumpChat: String?, onLogout: () -> Unit) {
         val inVoice by Calls.state.inVoice.collectAsState()
         if (inVoice) VoiceBar(me)
         if (ProfileSheet.visible.value) ProfileSheetView(me, onOpenChat = { openChatId = it })
+
+        // нижний док (v20) — поверх контента, скрыт в чате
+        if (!chatOpen && !adminOpen) {
+            Dock(
+                modifier = Modifier.align(Alignment.BottomCenter),
+                tab = tab,
+                me = me,
+                onChats = { tab = 0 },
+                onFriends = { tab = 1 },
+                onAi = { tab = 2 },
+                onSaved = {
+                    scope.launch {
+                        try {
+                            val saved = Supa.chats.firstOrNull { it.isSaved() }
+                                ?: Supa.chats.firstOrNull { it.type == "direct" && it.members.size == 1 }
+                            val id = saved?.id ?: Supa.startDirect(Supa.userId ?: "")
+                            openChatId = id
+                        } catch (_: Exception) { }
+                    }
+                },
+                onProfile = { tab = 3 },
+            )
+        }
 
         // тосты
         val t = Calls.state.toast.value
