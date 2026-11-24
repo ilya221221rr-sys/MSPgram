@@ -1269,7 +1269,7 @@ fun SpoilerText(text: String, scale: Float = 1f) {
                     shape = RoundedCornerShape(6.dp),
                 ) {
                     Text(
-                        if (revealed) linkifyAnnotated(part) else part.map { '█' }.joinToString(""),
+                        if (revealed) linkifyAnnotated(part).text else part.map { '█' }.joinToString(""),
                         color = if (revealed) Color.White else Color.Transparent,
                         fontSize = (15 * scale).sp,
                         modifier = Modifier.clickable { revealed = true }.padding(horizontal = 5.dp, vertical = 1.dp),
