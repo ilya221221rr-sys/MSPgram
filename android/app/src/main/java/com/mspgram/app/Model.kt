@@ -68,7 +68,7 @@ data class Chat(
     val last_message_at: String? = null,
     val last_message_text: String? = null,
     val last_message_sender: String? = null,
-    val members: List<Member> = emptyList(),
+    @SerialName("chat_members") val members: List<Member> = emptyList(),
 ) {
     fun isSaved() = is_saved || (type == "direct" && members.size == 1)
     fun myFlags(meId: String): Member? = members.firstOrNull { it.user_id == meId }
