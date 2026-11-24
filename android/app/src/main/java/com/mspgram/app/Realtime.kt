@@ -111,6 +111,14 @@ object Realtime {
                 val env = json.decodeFromString<RtEnvelope>(text)
                 val topic = env.topic ?: return
                 when (env.event) {
+                    "phx_reply" -> {
+                        val status = env.payload?.get("status")?.jsonPrimitive?.contentOrNull
+                        if (topic == "msp-online" && status == "ok" && uidKey.isNotBlank()) {
+                            val myStatus = Supa.me?.presence_status?.takeIf { it.isNotBlank() } ?: "online"
+                            if (myStatus == "invisible") presenceUntrack()
+                            else presenceTrack(uidKey, myStatus)
+                        }
+                    }
                     "postgres_changes" -> {
                         val data = env.payload?.get("data") as? JsonObject ?: return
                         val ev = data["event"]?.jsonPrimitive?.contentOrNull ?: return
@@ -121,15 +129,37 @@ object Realtime {
                         val old = data["old_record"] as? JsonObject
                         db.tryEmit(RtDataEvent(table, ev, record, old))
                     }
-                    "presence_diff", "presence_state" -> {
+                    "presence_state" -> {
                         val ps = env.payload ?: return
-                        val cur = online.value.toMutableSet()
-                        for ((uid, v) in ps) {
-                            val o = v as? JsonObject ?: continue
-                            val metas = o["metas"] as? kotlinx.serialization.json.JsonArray ?: continue
-                            if (metas.isEmpty()) cur.remove(uid) else cur.add(uid)
+                        val current = linkedSetOf<String>()
+                        for ((uid, value) in ps) {
+                            val metas = when (value) {
+                                is kotlinx.serialization.json.JsonArray -> value
+                                is JsonObject -> value["metas"] as? kotlinx.serialization.json.JsonArray
+                                else -> null
+                            }
+                            if (!metas.isNullOrEmpty()) current.add(uid)
                         }
-                        online.value = cur
+                        online.value = current
+                    }
+                    "presence_diff" -> {
+                        val ps = env.payload ?: return
+                        val current = online.value.toMutableSet()
+                        fun applyPresence(section: String, joining: Boolean) {
+                            val entries = ps[section] as? JsonObject ?: return
+                            for ((uid, value) in entries) {
+                                val metas = when (value) {
+                                    is kotlinx.serialization.json.JsonArray -> value
+                                    is JsonObject -> value["metas"] as? kotlinx.serialization.json.JsonArray
+                                    else -> null
+                                }
+                                if (joining || !metas.isNullOrEmpty()) current.add(uid)
+                                else current.remove(uid)
+                            }
+                        }
+                        applyPresence("joins", joining = true)
+                        applyPresence("leaves", joining = false)
+                        online.value = current
                     }
                     "broadcast" -> {
                         val ev = env.payload?.get("event")?.jsonPrimitive?.contentOrNull ?: return
@@ -190,7 +220,8 @@ object Realtime {
         val payload = if (postgresChanges != null) {
             """{"config":{"postgres_changes":$postgresChanges,"broadcast":{"self":false},"presence":{"key":""}}}"""
         } else {
-            """{"config":{"broadcast":{"self":false},"presence":{"key":""}}}"""
+            val presenceKey = if (topic == "msp-online") uidKey else ""
+            """{"config":{"broadcast":{"self":false},"presence":{"key":"$presenceKey"}}}"""
         }
         val msg = """{"topic":"$topic","event":"phx_join","ref":"${nextRef()}","payload":$payload}"""
         ws?.send(msg)
