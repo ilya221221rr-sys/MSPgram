@@ -64,7 +64,8 @@ object Realtime {
 
     // presence (онлайн-набор uid, как state.online на сайте)
     val online = MutableStateFlow<Set<String>>(emptySet())
-    private val presenceRefs = mutableMapOf<String, MutableSet<String>>()
+    private val presenceMeta = mutableMapOf<String, MutableMap<String, String>>()
+    val presenceStatus = MutableStateFlow<Map<String, String>>(emptyMap())
 
     private fun nextRef(): String = (refCounter++).toString()
 
@@ -132,20 +133,24 @@ object Realtime {
                     }
                     "presence_state" -> {
                         val ps = env.payload ?: return
-                        presenceRefs.clear()
+                        presenceMeta.clear()
                         for ((uid, value) in ps) {
                             val metas = when (value) {
                                 is kotlinx.serialization.json.JsonArray -> value
                                 is JsonObject -> value["metas"] as? kotlinx.serialization.json.JsonArray
                                 else -> null
                             } ?: continue
-                            val refs = metas.mapIndexed { index, meta ->
-                                (meta as? JsonObject)?.get("presence_ref")?.jsonPrimitive?.contentOrNull
-                                    ?: "meta-$index"
-                            }.toMutableSet()
-                            if (refs.isNotEmpty()) presenceRefs[uid] = refs
+                            val records = linkedMapOf<String, String>()
+                            metas.forEachIndexed { index, meta ->
+                                val item = meta as? JsonObject
+                                val ref = item?.get("presence_ref")?.jsonPrimitive?.contentOrNull ?: "meta-$index"
+                                val status = item?.get("status")?.jsonPrimitive?.contentOrNull ?: "online"
+                                records[ref] = status
+                            }
+                            if (records.isNotEmpty()) presenceMeta[uid] = records
                         }
-                        online.value = presenceRefs.keys.toSet()
+                        online.value = presenceMeta.keys.toSet()
+                        presenceStatus.value = presenceMeta.mapValues { it.value.values.lastOrNull() ?: "online" }
                     }
                     "presence_diff" -> {
                         val ps = env.payload ?: return
@@ -157,18 +162,20 @@ object Realtime {
                                     is JsonObject -> value["metas"] as? kotlinx.serialization.json.JsonArray
                                     else -> null
                                 } ?: continue
-                                val refs = presenceRefs.getOrPut(uid) { mutableSetOf() }
+                                val records = presenceMeta.getOrPut(uid) { linkedMapOf() }
                                 metas.forEachIndexed { index, meta ->
-                                    val ref = (meta as? JsonObject)?.get("presence_ref")?.jsonPrimitive?.contentOrNull
-                                        ?: "meta-$index"
-                                    if (joining) refs.add(ref) else refs.remove(ref)
+                                    val item = meta as? JsonObject
+                                    val ref = item?.get("presence_ref")?.jsonPrimitive?.contentOrNull ?: "meta-$index"
+                                    if (joining) records[ref] = item?.get("status")?.jsonPrimitive?.contentOrNull ?: "online"
+                                    else records.remove(ref)
                                 }
-                                if (refs.isEmpty()) presenceRefs.remove(uid)
+                                if (records.isEmpty()) presenceMeta.remove(uid)
                             }
                         }
                         applyPresence("joins", joining = true)
                         applyPresence("leaves", joining = false)
-                        online.value = presenceRefs.keys.toSet()
+                        online.value = presenceMeta.keys.toSet()
+                        presenceStatus.value = presenceMeta.mapValues { it.value.values.lastOrNull() ?: "online" }
                     }
                     "broadcast" -> {
                         val ev = env.payload?.get("event")?.jsonPrimitive?.contentOrNull ?: return
@@ -182,6 +189,9 @@ object Realtime {
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
             ws = null
             connected.value = false
+            presenceMeta.clear()
+            presenceStatus.value = emptyMap()
+            online.value = emptySet()
             hb?.cancel(); hb = null
             scheduleReconnect(lastApikey, lastUrl)
         }
