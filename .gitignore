@@ -14,3 +14,10 @@ desktop.ini
 *.tmp
 ~$*
 node_modules/
+
+# Android-сборка
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+*.keystore
