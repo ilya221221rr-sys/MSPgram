@@ -124,10 +124,14 @@ fun MspTheme(content: @Composable () -> Unit) {
     val view = LocalView.current
     // Синхронизируем статус-бар и нижнюю системную панель с текущим скином.
     SideEffect {
-        (view.context as? Activity)?.window?.let { window ->
+        var context: android.content.Context = view.context
+        while (context is android.content.ContextWrapper && context !is Activity) {
+            context = context.baseContext
+        }
+        (context as? Activity)?.window?.let { window ->
             window.statusBarColor = DarkBg.toArgb()
             window.navigationBarColor = DarkBg.toArgb()
-            window.navigationBarDividerColor = LineC.toArgb()
+            if (Build.VERSION.SDK_INT >= 28) window.navigationBarDividerColor = LineC.toArgb()
             if (Build.VERSION.SDK_INT >= 29) window.isNavigationBarContrastEnforced = false
             window.decorView.systemUiVisibility = 0
         }
