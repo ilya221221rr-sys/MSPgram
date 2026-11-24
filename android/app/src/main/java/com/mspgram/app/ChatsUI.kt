@@ -32,6 +32,11 @@ import kotlinx.coroutines.launch
 
 data class Folder(val id: String, val name: String, val emoji: String, val ids: List<String>)
 
+object ServerCreation {
+    // Запрос на создание сервера из боковой панели.
+    val open = mutableStateOf(false)
+}
+
 object FolderStore {
     fun get(): List<Folder> = try {
         Prefs.get().folders.map { raw ->
@@ -193,8 +198,11 @@ fun ChatsScreen(me: Profile, onOpen: (String) -> Unit) {
     if (showSearch) {
         GlobalSearch(me, onClose = { showSearch = false }, onOpen = { showSearch = false; onOpen(it) })
     }
-    if (showNewServer) {
-        NewServerDialog(onClose = { showNewServer = false }, onOpen = { showNewServer = false; onOpen(it) })
+    if (showNewServer || ServerCreation.open.value) {
+        NewServerDialog(
+            onClose = { showNewServer = false; ServerCreation.open.value = false },
+            onOpen = { showNewServer = false; ServerCreation.open.value = false; onOpen(it) },
+        )
     }
     editingFolder?.let { f ->
         FolderEditorDialog(folder = f, onClose = { editingFolder = null })
