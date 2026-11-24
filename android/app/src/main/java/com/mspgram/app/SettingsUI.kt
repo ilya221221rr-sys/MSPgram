@@ -5,6 +5,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -73,7 +75,7 @@ fun SettingsScreen(me: Profile, onLogout: () -> Unit, onOpenAdmin: () -> Unit) {
         item {
             // скины — те же 6 тем, что в appearance.js SKINS
             Column(Modifier.padding(horizontal = 16.dp)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     SKINS.forEach { (key, label) ->
                         Column(horizontalAlignment = Alignment.CenterHorizontally,
                             modifier = Modifier.clickable {
@@ -93,7 +95,7 @@ fun SettingsScreen(me: Profile, onLogout: () -> Unit, onOpenAdmin: () -> Unit) {
                 Spacer(Modifier.size(10.dp))
                 // обои чата
                 Text("Обои чата", color = MutedText, fontSize = 11.sp)
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     WALLS.take(4).forEach { (key, label) ->
                         val on = prefs.wall == key
                         Text(label, fontSize = 11.sp,
@@ -104,7 +106,7 @@ fun SettingsScreen(me: Profile, onLogout: () -> Unit, onOpenAdmin: () -> Unit) {
                                 .padding(horizontal = 8.dp, vertical = 6.dp))
                     }
                 }
-                Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     WALLS.drop(4).forEach { (key, label) ->
                         val on = prefs.wall == key
                         Text(label, fontSize = 11.sp,

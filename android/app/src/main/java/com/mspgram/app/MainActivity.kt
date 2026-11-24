@@ -9,6 +9,10 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -23,6 +27,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -64,6 +72,11 @@ import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Системные панели оформлены в той же палитре, что и нативный интерфейс.
+        window.statusBarColor = android.graphics.Color.rgb(11, 16, 32)
+        window.navigationBarColor = android.graphics.Color.rgb(11, 16, 32)
+        window.decorView.systemUiVisibility = 0
+        window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         Supa.init(this)
         Prefs.init(this)
         Calls.init(this)
@@ -118,20 +131,41 @@ fun LoginScreen(onEnter: () -> Unit) {
 
     // auth-hero + auth-card (style.css): логотип, слоган, карточка с табами
     Column(
-        Modifier.fillMaxSize().background(DarkBg).padding(20.dp),
+        Modifier.fillMaxSize()
+            .background(Brush.radialGradient(listOf(Color(0x443E63DD), Color(0x227C5BFF), DarkBg), radius = 900f))
+            .windowInsetsPadding(WindowInsets.safeDrawing)
+            .imePadding().verticalScroll(rememberScrollState()).padding(20.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text("✈️", fontSize = 44.sp)
+        Box(
+            Modifier.size(74.dp).background(
+                Brush.linearGradient(listOf(accentColor(Prefs.get().accent), Accent2)),
+                RoundedCornerShape(22.dp),
+            ),
+            contentAlignment = Alignment.Center,
+        ) { Text("✈️", fontSize = 35.sp) }
         Text("MSPgram", fontSize = 32.sp, fontWeight = FontWeight.ExtraBold, color = TextC)
         Text(
             "Мессенджер нового поколения.\nСерверы и каналы — как в Discord.\nСкорость и удобство — как в Telegram.",
-            fontSize = 13.sp, color = MutedText, lineHeight = 19.sp,
-            modifier = Modifier.padding(vertical = 10.dp),
+            fontSize = 14.sp, color = MutedText, lineHeight = 20.sp,
+            modifier = Modifier.padding(vertical = 8.dp).widthIn(max = 390.dp),
         )
-        Spacer(Modifier.size(8.dp))
+        Row(
+            Modifier.widthIn(max = 390.dp).fillMaxWidth().padding(bottom = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            listOf("💬 Чаты", "👥 Сообщества", "✨ MSP AI").forEach { label ->
+                Box(
+                    Modifier.background(Color(0x1A5B8CFF), RoundedCornerShape(50))
+                        .border(1.dp, Color(0x385B8CFF), RoundedCornerShape(50))
+                        .padding(horizontal = 9.dp, vertical = 5.dp),
+                ) { Text(label, color = Color(0xFF9DB4FF), fontSize = 10.sp, fontWeight = FontWeight.Medium) }
+            }
+        }
         Column(
-            Modifier.fillMaxWidth()
+            Modifier.widthIn(max = 390.dp).fillMaxWidth()
                 .background(Color(0xE6111827), RoundedCornerShape(22.dp))
                 .border(1.dp, Color(0x405D6EA0), RoundedCornerShape(22.dp))
                 .padding(horizontal = 26.dp, vertical = 30.dp),
@@ -175,7 +209,8 @@ fun LoginScreen(onEnter: () -> Unit) {
                 singleLine = true, modifier = Modifier.fillMaxWidth(), colors = fieldColors, shape = RoundedCornerShape(10.dp))
             Spacer(Modifier.size(10.dp))
             OutlinedTextField(value = pass, onValueChange = { pass = it }, label = { Text("Пароль", color = MutedText) },
-                singleLine = true, modifier = Modifier.fillMaxWidth(), colors = fieldColors, shape = RoundedCornerShape(10.dp))
+                singleLine = true, visualTransformation = PasswordVisualTransformation(),
+                modifier = Modifier.fillMaxWidth(), colors = fieldColors, shape = RoundedCornerShape(10.dp))
             if (err.isNotEmpty()) {
                 Spacer(Modifier.size(10.dp))
                 Text(err, color = Color(0xFFFF8F92), fontSize = 13.sp)
@@ -426,20 +461,26 @@ fun MainScreen(me: Profile, jumpChat: String?, onLogout: () -> Unit) {
     }
 
     // ---------- контент: рейл + содержимое (раскладка сайта) ----------
-    Box(Modifier.fillMaxSize().background(DarkBg)) {
+    Box(Modifier.fillMaxSize().background(DarkBg).windowInsetsPadding(WindowInsets.safeDrawing)) {
         val chatOpen = openChatId != null
         if (!chatOpen) {
+            val deviceConfig = androidx.compose.ui.platform.LocalConfiguration.current
+            // В мобильной версии сайта рейл шириной 58 px остаётся слева.
+            // Он скрывается только в короткой альбомной ориентации, как в v21.css.
+            val compactLandscape = deviceConfig.screenWidthDp > 900 && deviceConfig.screenHeightDp < 520
             Row(Modifier.fillMaxSize()) {
-                val railVersion by Supa.chatListVersion.collectAsState() // подписка: рейл живёт вместе со списком
-                val railUnread = Supa.unread.mapValues { it.value.toInt() }
-                ServerRail(
-                    servers = Supa.chats.filter { it.type == "group" && it.myFlags(me.id)?.archived != true }.also { railVersion },
-                    activeChatId = null,
-                    unread = railUnread,
-                    onHome = { tab = 0 },
-                    onServer = { c -> openChatId = c.id },
-                    onAdd = { /* диалог нового сервера открывается из списка чатов */ scope.launch { } },
-                )
+                if (!compactLandscape) {
+                    val railVersion by Supa.chatListVersion.collectAsState()
+                    val railUnread = Supa.unread.mapValues { it.value.toInt() }
+                    ServerRail(
+                        servers = Supa.chats.filter { it.type == "group" && it.myFlags(me.id)?.archived != true }.also { railVersion },
+                        activeChatId = null,
+                        unread = railUnread,
+                        onHome = { tab = 0 },
+                        onServer = { c -> openChatId = c.id },
+                        onAdd = { scope.launch { } },
+                    )
+                }
                 Box(Modifier.weight(1f)) {
                     when (tab) {
                         0 -> ChatsScreen(me, onOpen = { openChatId = it })

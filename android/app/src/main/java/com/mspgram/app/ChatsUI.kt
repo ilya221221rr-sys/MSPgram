@@ -4,6 +4,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -65,13 +68,20 @@ fun ChatsScreen(me: Profile, onOpen: (String) -> Unit) {
             Avatar(me.name, 34.dp, me.avatar_url, circle = true,
                 presence = if (Calls.state.inVoice.value) "online" else null)
             Spacer(Modifier.width(10.dp))
-            Text(
-                "MSPgram v26",
-                fontSize = 16.sp, fontWeight = FontWeight.ExtraBold,
-                style = androidx.compose.ui.text.TextStyle(
-                    brush = androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(Color(0xFFDFE8FF), Color(0xFF9DB4FF))),
-                ),
-            )
+            Column(verticalArrangement = Arrangement.Center) {
+                Text(
+                    "MSPgram",
+                    fontSize = 16.sp, fontWeight = FontWeight.ExtraBold,
+                    style = androidx.compose.ui.text.TextStyle(
+                        brush = androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(Color(0xFFDFE8FF), Color(0xFF9DB4FF))),
+                    ),
+                )
+                Text("v24", color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.background(
+                        Brush.linearGradient(listOf(accentColor(Prefs.get().accent), Accent2)),
+                        RoundedCornerShape(50),
+                    ).padding(horizontal = 6.dp, vertical = 1.dp))
+            }
             Spacer(Modifier.weight(1f))
             IconBtn("＋") { showNewServer = true }
             IconBtn("🔍") { showSearch = true }
@@ -81,7 +91,7 @@ fun ChatsScreen(me: Profile, onOpen: (String) -> Unit) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
             OutlinedTextField(
                 value = searchQ, onValueChange = { searchQ = it },
-                placeholder = { Text("Поиск…", color = Color(0xFF5C688A), fontSize = 14.sp) },
+                placeholder = { Text("Поиск: люди, чаты, сообщения, @ник", color = Color(0xFF5C688A), fontSize = 13.sp, maxLines = 1) },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 shape = RoundedCornerShape(12.dp),
@@ -100,7 +110,8 @@ fun ChatsScreen(me: Profile, onOpen: (String) -> Unit) {
         // list-filters (v18.css lf-chip): Все/Непрочитанные/Личные/Группы + папки
         val totalUnread = Supa.unread.values.sum()
         Row(
-            Modifier.fillMaxWidth().background(DarkBg).padding(horizontal = 12.dp, vertical = 8.dp),
+            Modifier.fillMaxWidth().background(DarkBg).horizontalScroll(rememberScrollState())
+                .padding(horizontal = 12.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             LfChip("Все", filter == "all") { filter = "all" }
@@ -111,7 +122,8 @@ fun ChatsScreen(me: Profile, onOpen: (String) -> Unit) {
         val folders = FolderStore.get()
         if (folders.isNotEmpty() || true) {
             Row(
-                Modifier.fillMaxWidth().background(DarkBg).padding(horizontal = 12.dp).padding(bottom = 8.dp),
+                Modifier.fillMaxWidth().background(DarkBg).horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 12.dp).padding(bottom = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 folders.forEach { f ->
@@ -158,7 +170,7 @@ fun ChatsScreen(me: Profile, onOpen: (String) -> Unit) {
         val rest = filteredBase.filter { c -> pinned.none { it.id == c.id } }
             .sortedByDescending { it.last_message_at ?: "" }
 
-        LazyColumn(Modifier.fillMaxSize()) {
+        LazyColumn(Modifier.fillMaxSize().padding(horizontal = 0.dp)) {
             if (filter == "all" && pinned.isNotEmpty()) {
                 item { Section("📌") }
                 items(pinned) { c -> ChatRow(meId, c, onOpen, unreadIn = (Supa.unread[c.id] ?: 0L).toInt(), typingIn = ChatSession.typingIn(c.id)) }
@@ -231,9 +243,11 @@ fun ChatRow(meId: String, chat: Chat, onOpen: (String) -> Unit, unreadIn: Int = 
     // chat-row (style.css + v18.css): radius 14, padding 10/11, title 15/600,
     // Вы: акцентным, бейдж — градиентная пилюля
     Row(
-        Modifier.fillMaxWidth().background(DarkBg)
+        Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(DarkBg)
             .clickable { onOpen(chat.id) }
-            .padding(horizontal = 11.dp, vertical = 10.dp),
+            .padding(horizontal = 10.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (chat.isSaved()) {
