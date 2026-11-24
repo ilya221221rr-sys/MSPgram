@@ -9,6 +9,10 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -118,11 +122,18 @@ fun LoginScreen(onEnter: () -> Unit) {
 
     // auth-hero + auth-card (style.css): логотип, слоган, карточка с табами
     Column(
-        Modifier.fillMaxSize().background(DarkBg).padding(20.dp),
+        Modifier.fillMaxSize().background(DarkBg).imePadding()
+            .verticalScroll(rememberScrollState()).padding(20.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text("✈️", fontSize = 44.sp)
+        Box(
+            Modifier.size(74.dp).background(
+                Brush.linearGradient(listOf(accentColor(Prefs.get().accent), Accent2)),
+                RoundedCornerShape(22.dp),
+            ),
+            contentAlignment = Alignment.Center,
+        ) { Text("✈️", fontSize = 35.sp) }
         Text("MSPgram", fontSize = 32.sp, fontWeight = FontWeight.ExtraBold, color = TextC)
         Text(
             "Мессенджер нового поколения.\nСерверы и каналы — как в Discord.\nСкорость и удобство — как в Telegram.",
@@ -175,7 +186,8 @@ fun LoginScreen(onEnter: () -> Unit) {
                 singleLine = true, modifier = Modifier.fillMaxWidth(), colors = fieldColors, shape = RoundedCornerShape(10.dp))
             Spacer(Modifier.size(10.dp))
             OutlinedTextField(value = pass, onValueChange = { pass = it }, label = { Text("Пароль", color = MutedText) },
-                singleLine = true, modifier = Modifier.fillMaxWidth(), colors = fieldColors, shape = RoundedCornerShape(10.dp))
+                singleLine = true, visualTransformation = PasswordVisualTransformation(),
+                modifier = Modifier.fillMaxWidth(), colors = fieldColors, shape = RoundedCornerShape(10.dp))
             if (err.isNotEmpty()) {
                 Spacer(Modifier.size(10.dp))
                 Text(err, color = Color(0xFFFF8F92), fontSize = 13.sp)
