@@ -817,6 +817,7 @@ object Supa {
         val privacy = p.privacy_last_seen ?: "everyone"
         if (privacy == "nobody") return null
         if (privacy == "friends" && friends.none { it.profile?.id == p.id }) return null
-        return p.presence_status ?: if (Realtime.online.value.contains(p.id)) "online" else null
+        if (!Realtime.online.value.contains(p.id)) return null
+        return p.presence_status?.takeIf { it in listOf("online", "away", "dnd") } ?: "online"
     }
 }
