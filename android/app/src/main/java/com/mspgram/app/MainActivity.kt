@@ -147,7 +147,7 @@ fun LoginScreen(onEnter: () -> Unit) {
             modifier = Modifier.padding(vertical = 8.dp).widthIn(max = 390.dp),
         )
         Row(
-            Modifier.widthIn(max = 390.dp).fillMaxWidth().padding(bottom = 16.dp),
+            Modifier.fillMaxWidth().widthIn(max = 390.dp).padding(bottom = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -160,7 +160,7 @@ fun LoginScreen(onEnter: () -> Unit) {
             }
         }
         Column(
-            Modifier.fillMaxWidth().widthIn(max = 390.dp)
+            Modifier.widthIn(max = 390.dp).fillMaxWidth()
                 .background(Color(0xE6111827), RoundedCornerShape(22.dp))
                 .border(1.dp, Color(0x405D6EA0), RoundedCornerShape(22.dp))
                 .padding(horizontal = 26.dp, vertical = 30.dp),
