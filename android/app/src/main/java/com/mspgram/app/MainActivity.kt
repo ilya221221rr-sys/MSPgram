@@ -478,7 +478,7 @@ fun MainScreen(me: Profile, jumpChat: String?, onLogout: () -> Unit) {
                         unread = railUnread,
                         onHome = { tab = 0 },
                         onServer = { c -> openChatId = c.id },
-                        onAdd = { scope.launch { } },
+                        onAdd = { tab = 0; ServerCreation.open.value = true },
                     )
                 }
                 Box(Modifier.weight(1f)) {
