@@ -106,6 +106,9 @@ object ChatSession {
 
 @Composable
 fun ChatScreen(me: Profile, chatId: String, onBack: () -> Unit) {
+    val onlineUsers by Realtime.online.collectAsState()
+    val liveStatuses by Realtime.presenceStatus.collectAsState()
+    LaunchedEffect(onlineUsers, liveStatuses) { ChatSession.version.value++ }
     val chat = Supa.chatById(chatId)
     if (chat == null) {
         LaunchedEffect(chatId) {
