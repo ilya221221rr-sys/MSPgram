@@ -66,6 +66,7 @@ fun skinAccent(name: String): Color = when (name) {
 // динамическая тема: обновляется refreshTheme() при смене скина
 object ThemeState { val version = androidx.compose.runtime.mutableStateOf(0) }
 
+val Accent = Color(0xFF5B8CFF)
 var DarkBg = Color(0xFF0B1020)
 var DarkSurface = Color(0xFF141927)
 var DarkSurface2 = Color(0xFF1C2230)

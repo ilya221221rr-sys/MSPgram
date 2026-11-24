@@ -38,6 +38,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -367,7 +368,7 @@ fun CircleMessage(url: String, durMs: Long) {
             val bmp = thumb.value
             if (bmp != null) {
                 androidx.compose.foundation.Image(
-                    bitmap = androidx.compose.ui.graphics.asImageBitmap(bmp),
+                    bitmap = bmp.asImageBitmap(),
                     contentDescription = "Кружок",
                     contentScale = androidx.compose.ui.layout.ContentScale.Crop,
                     modifier = Modifier.size(150.dp).clip(CircleShape).background(Color.Black),
@@ -406,7 +407,7 @@ fun CircleMessage(url: String, durMs: Long) {
 /** Детерминированные «волны» по seed (id сообщения), как barsHTML(seed) на сайте */
 fun voiceBarHeights(seed: String, count: Int = 18): List<Int> {
     var h = 2166136261L
-    seed.forEach { c -> h = (h xor c.code) * 16777619L }
+    seed.forEach { c -> h = (h xor c.code.toLong()) * 16777619L }
     return List(count) { i ->
         h = (h * 1103515245L + 12345L) and 0x7FFFFFFFL
         3 + ((h ushr (i % 13)) % 9).toInt() // высота 3..11

@@ -72,8 +72,13 @@ object Realtime {
         .pingInterval(20, TimeUnit.SECONDS)
         .build()
 
+    private var lastApikey = ""
+    private var lastUrl = ""
+
     fun connect(apikey: String, url: String) {
         if (ws != null) return
+        lastApikey = apikey
+        lastUrl = url
         val u = "$url/realtime/v1/websocket?apikey=$apikey&vsn=1.0.0"
         ws = client().newWebSocket(Request.Builder().url(u).build(), listener)
     }
@@ -139,14 +144,14 @@ object Realtime {
             ws = null
             connected.value = false
             hb?.cancel(); hb = null
-            scheduleReconnect(apikey, url)
+            scheduleReconnect(lastApikey, lastUrl)
         }
 
         override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
             ws = null
             connected.value = false
             hb?.cancel(); hb = null
-            scheduleReconnect(apikey, url)
+            scheduleReconnect(lastApikey, lastUrl)
         }
     }
 
