@@ -64,7 +64,7 @@ fun ChatsScreen(me: Profile, onOpen: (String) -> Unit) {
 
     LaunchedEffect(version) { }
 
-    Column(Modifier.fillMaxSize().background(DarkBg)) {
+    Column(Modifier.fillMaxSize().background(DarkSurface)) {
         // sidebar-head (style.css): аватар-профиль, заголовок, ＋
         Row(
             Modifier.fillMaxWidth().background(DarkSurface).padding(horizontal = 12.dp, vertical = 10.dp),
@@ -253,7 +253,6 @@ fun ChatRow(meId: String, chat: Chat, onOpen: (String) -> Unit, unreadIn: Int = 
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp)
             .clip(RoundedCornerShape(16.dp))
-            .background(DarkBg)
             .clickable { onOpen(chat.id) }
             .padding(horizontal = 10.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -263,7 +262,7 @@ fun ChatRow(meId: String, chat: Chat, onOpen: (String) -> Unit, unreadIn: Int = 
                 Text("🔖", fontSize = 19.sp)
             }
         } else {
-            Avatar(title, 46.dp, chat.avatar_url ?: other?.avatar_url, presence = if (chat.type == "direct") presence else null)
+            Avatar(title, 46.dp, chat.avatar_url ?: other?.avatar_url, presence = if (chat.type == "direct") presence else null, circle = chat.type != "group")
         }
         Spacer(Modifier.width(11.dp))
         Column(Modifier.weight(1f)) {
