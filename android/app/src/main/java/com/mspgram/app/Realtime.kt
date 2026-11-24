@@ -64,6 +64,7 @@ object Realtime {
 
     // presence (онлайн-набор uid, как state.online на сайте)
     val online = MutableStateFlow<Set<String>>(emptySet())
+    private val presenceRefs = mutableMapOf<String, MutableSet<String>>()
 
     private fun nextRef(): String = (refCounter++).toString()
 
@@ -131,20 +132,23 @@ object Realtime {
                     }
                     "presence_state" -> {
                         val ps = env.payload ?: return
-                        val current = linkedSetOf<String>()
+                        presenceRefs.clear()
                         for ((uid, value) in ps) {
                             val metas = when (value) {
                                 is kotlinx.serialization.json.JsonArray -> value
                                 is JsonObject -> value["metas"] as? kotlinx.serialization.json.JsonArray
                                 else -> null
-                            }
-                            if (!metas.isNullOrEmpty()) current.add(uid)
+                            } ?: continue
+                            val refs = metas.mapIndexed { index, meta ->
+                                (meta as? JsonObject)?.get("presence_ref")?.jsonPrimitive?.contentOrNull
+                                    ?: "meta-$index"
+                            }.toMutableSet()
+                            if (refs.isNotEmpty()) presenceRefs[uid] = refs
                         }
-                        online.value = current
+                        online.value = presenceRefs.keys.toSet()
                     }
                     "presence_diff" -> {
                         val ps = env.payload ?: return
-                        val current = online.value.toMutableSet()
                         fun applyPresence(section: String, joining: Boolean) {
                             val entries = ps[section] as? JsonObject ?: return
                             for ((uid, value) in entries) {
@@ -152,14 +156,19 @@ object Realtime {
                                     is kotlinx.serialization.json.JsonArray -> value
                                     is JsonObject -> value["metas"] as? kotlinx.serialization.json.JsonArray
                                     else -> null
+                                } ?: continue
+                                val refs = presenceRefs.getOrPut(uid) { mutableSetOf() }
+                                metas.forEachIndexed { index, meta ->
+                                    val ref = (meta as? JsonObject)?.get("presence_ref")?.jsonPrimitive?.contentOrNull
+                                        ?: "meta-$index"
+                                    if (joining) refs.add(ref) else refs.remove(ref)
                                 }
-                                if (joining || !metas.isNullOrEmpty()) current.add(uid)
-                                else current.remove(uid)
+                                if (refs.isEmpty()) presenceRefs.remove(uid)
                             }
                         }
                         applyPresence("joins", joining = true)
                         applyPresence("leaves", joining = false)
-                        online.value = current
+                        online.value = presenceRefs.keys.toSet()
                     }
                     "broadcast" -> {
                         val ev = env.payload?.get("event")?.jsonPrimitive?.contentOrNull ?: return
