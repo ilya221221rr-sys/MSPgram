@@ -274,7 +274,8 @@ fun ChatScreen(me: Profile, chatId: String, onBack: () -> Unit) {
                 }
             }) {
                 Avatar(chat.titleFor(me.id), 40.dp, chat.avatar_url ?: chat.otherMember(me.id)?.avatar_url,
-                    presence = if (chat.type == "direct") Supa.presenceOf(chat.otherMember(me.id)) else null)
+                    presence = if (chat.type == "direct") Supa.presenceOf(chat.otherMember(me.id)) else null,
+                    circle = chat.type != "group")
                 Spacer(Modifier.width(10.dp))
                 Column {
                     Text(chat.titleFor(me.id), color = TextC, fontWeight = FontWeight.Bold, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
