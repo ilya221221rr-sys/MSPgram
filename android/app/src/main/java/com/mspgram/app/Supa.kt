@@ -122,12 +122,44 @@ object Supa {
         if (s.expAt - 60_000L < System.currentTimeMillis()) refresh()
     }
 
+    // 2FA (extras.js ensureMfa): логин возвращает aal1-сессию, нужен TOTP-код
+    class MfaRequiredException(val uid: String) : Exception("Требуется код двухфакторной аутентификации")
+
     suspend fun signIn(email: String, pass: String) {
         val resp = req("POST", "/auth/v1/token?grant_type=password", json.encodeToString(SignInBody(email, pass)), false)
         if (resp.code != 200) throw Exception(authErr(resp.body))
         val ar = json.decodeFromString<AuthResp>(resp.body)
         val uid = ar.user?.id ?: throw Exception("Ответ не содержит пользователя")
-        save(Session(ar.access_token ?: "", ar.refresh_token ?: "", System.currentTimeMillis() + ar.expires_in * 1000), uid)
+        if (ar.access_token != null) {
+            save(Session(ar.access_token, ar.refresh_token ?: "", System.currentTimeMillis() + ar.expires_in * 1000), uid)
+            // у пользователя включена 2FA? → запросить код (как mfa.listFactors после signInWithPassword)
+            val fr = reqRaw("GET", "/auth/v1/mfa/factors")
+            if (fr.code == 200) {
+                val factors = runCatching { json.decodeFromString<List<MfaFactor>>(fr.body) }.getOrDefault(emptyList())
+                if (factors.any { it.status == "verified" && it.factor_type == "totp" }) {
+                    throw MfaRequiredException(uid)
+                }
+            }
+        }
+        me = loadMe(uid)
+        Realtime.setPresenceKey(uid)
+    }
+
+    // подтвердить вход кодом 2FA (challengeAndVerify)
+    suspend fun mfaVerifyCode(code: String) {
+        val fr = reqRaw("GET", "/auth/v1/mfa/factors")
+        if (fr.code != 200) throw Exception("Не удалось получить факторы 2FA")
+        val factors = json.decodeFromString<List<MfaFactor>>(fr.body)
+        val factor = factors.firstOrNull { it.status == "verified" && it.factor_type == "totp" }
+            ?: throw Exception("Нет активного фактора 2FA")
+        val ch = reqRaw("POST", "/auth/v1/mfa/challenge", json.encodeToString(MfaChallengeBody(factor.id)))
+        if (ch.code != 200) throw Exception("Ошибка challenge: " + ch.body.take(120))
+        val challenge = json.decodeFromString<MfaChallengeResp>(ch.body)
+        val ver = reqRaw("POST", "/auth/v1/mfa/verify", json.encodeToString(MfaVerifyBody(factor.id, challenge.id, code)))
+        if (ver.code != 200) throw Exception(if (ver.code == 422) "Неверный код" else "Ошибка: " + ver.body.take(120))
+        val ar = json.decodeFromString<AuthResp>(ver.body)
+        val uid = ar.user?.id ?: userId ?: ""
+        ar.access_token?.let { save(Session(it, ar.refresh_token ?: "", System.currentTimeMillis() + ar.expires_in * 1000), uid) }
         me = loadMe(uid)
         Realtime.setPresenceKey(uid)
     }
@@ -225,6 +257,48 @@ object Supa {
         if (channelId != null) p += "&channel_id=eq.$channelId"
         p += "&order=created_at.desc&limit=60"
         return json.decodeFromString<List<Message>>(get(p)).reversed()
+    }
+
+    // история до момента (chatview.js: load-earlier / jumpToMessage, MSG_LIMIT 50)
+    suspend fun loadMessagesBefore(chatId: String, channelId: String?, beforeIso: String, limit: Int = 50): List<Message> {
+        var p = "/rest/v1/messages?select=*&chat_id=eq.$chatId&created_at=lt.$beforeIso"
+        if (channelId != null) p += "&channel_id=eq.$channelId"
+        p += "&order=created_at.desc&limit=$limit"
+        return json.decodeFromString<List<Message>>(get(p)).reversed()
+    }
+
+    // сообщение из любого места истории (jumpToMessage.findMessageAnywhere)
+    suspend fun findMessage(chatId: String, msgId: String): Message? {
+        val r = runCatching { get("/rest/v1/messages?select=*&id=eq.$msgId&chat_id=eq.$chatId") }
+        val list = runCatching { json.decodeFromString<List<Message>>(r) }.getOrDefault(emptyList())
+        return list.firstOrNull()
+    }
+
+    // 🔖 в «Избранное» (api.js saveToFavorites): сообщение копируется в saved-чат
+    suspend fun saveToFavorites(m: Message) {
+        val savedId = savedChatId() ?: throw Exception("Не удалось открыть «Избранное»")
+        val row = MsgPayload(
+            chat_id = savedId, sender_id = userId ?: "",
+            body = m.body ?: "",
+            channel_id = null,
+            attachment_type = m.attachment_type, attachment_url = m.attachment_url,
+            attachment_name = m.attachment_name, attachment_size = m.attachment_size,
+            duration_ms = m.duration_ms,
+        )
+        reqRaw("POST", "/rest/v1/messages", json.encodeToString(row), mapOf("Prefer" to "return=minimal"))
+    }
+
+    suspend fun savedChatId(): String? {
+        val r = reqRaw("POST", "/rest/v1/rpc/get_or_create_saved_chat", "{}", mapOf("Prefer" to "return=representation"))
+        if (r.code == 200) {
+            val clean = r.body.trim().trim('"')
+            if (clean.length > 20) return clean
+        }
+        val meId = userId ?: return null
+        val rows = runCatching {
+            json.decodeFromString<List<Chat>>(get("/rest/v1/chats?select=*&is_saved=eq.true&limit=1"))
+        }.getOrDefault(emptyList())
+        return rows.firstOrNull()?.id
     }
 
     suspend fun sendMessageFull(p: MsgPayload): Message {
