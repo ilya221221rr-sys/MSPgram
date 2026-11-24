@@ -31,8 +31,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import java.text.SimpleDateFormat
-import java.util.Date
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 // ============================================================
@@ -247,15 +249,22 @@ fun Avatar(name: String, dpSize: Dp, imageUrl: String? = null, presence: String?
     }
 }
 
-// «онлайн / был(а) N мин назад» — как relLastSeen на сайте
+// ISO-время из Supabase всегда разбираем как абсолютный момент, затем показываем
+// в часовом поясе устройства — так же, как new Date(iso) на сайте.
+private fun parseIsoInstant(iso: String): Instant? = try {
+    Instant.parse(iso)
+} catch (_: Exception) {
+    try { java.time.OffsetDateTime.parse(iso).toInstant() } catch (_: Exception) { null }
+}
+
+private fun localDate(instant: Instant): LocalDate =
+    instant.atZone(ZoneId.systemDefault()).toLocalDate()
+
+// «онлайн / был(а) N мин назад» — единый расчёт с веб-версией.
 fun relLastSeen(lastSeen: String?, presence: String?): String {
     if (presence == "online") return "онлайн"
-    if (lastSeen.isNullOrBlank()) return "не в сети"
-    val t = try {
-        SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US).parse(lastSeen.take(19))?.time ?: return "не в сети"
-    } catch (_: Exception) { return "не в сети" }
-    val diff = System.currentTimeMillis() - t
-    val min = diff / 60000
+    val instant = lastSeen?.let(::parseIsoInstant) ?: return "не в сети"
+    val min = (System.currentTimeMillis() - instant.toEpochMilli()) / 60000
     if (min < 1) return "был(а) только что"
     if (min < 60) return "был(а) $min мин назад"
     val h = min / 60
@@ -268,12 +277,8 @@ fun relLastSeen(lastSeen: String?, presence: String?): String {
 
 fun lastSeenShort(lastSeen: String?, presence: String?): String {
     if (presence == "online") return "онлайн"
-    if (lastSeen.isNullOrBlank()) return "был(а) давно"
-    val t = try {
-        SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US).parse(lastSeen.take(19))?.time ?: return "давно"
-    } catch (_: Exception) { return "давно" }
-    val diff = System.currentTimeMillis() - t
-    val min = diff / 60000
+    val instant = lastSeen?.let(::parseIsoInstant) ?: return "был(а) давно"
+    val min = (System.currentTimeMillis() - instant.toEpochMilli()) / 60000
     if (min < 1) return "только что"
     if (min < 60) return "$min мин назад"
     val h = min / 60
@@ -285,28 +290,23 @@ fun lastSeenShort(lastSeen: String?, presence: String?): String {
 }
 
 fun fmtTime(iso: String): String = try {
-    val src = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US).parse(iso.take(19))!!
-    SimpleDateFormat("HH:mm", Locale.getDefault()).format(src)
+    DateTimeFormatter.ofPattern("HH:mm", Locale.getDefault())
+        .withZone(ZoneId.systemDefault()).format(parseIsoInstant(iso) ?: return "")
 } catch (_: Exception) { "" }
 
 fun fmtDay(iso: String): String = try {
-    val src = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US).parse(iso.take(19))!!
-    val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
-    val d = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(src)
-    when (d) {
+    val date = localDate(parseIsoInstant(iso) ?: return "")
+    val today = LocalDate.now(ZoneId.systemDefault())
+    when (date) {
         today -> "Сегодня"
-        SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(System.currentTimeMillis() - 86400000)) -> "Вчера"
-        else -> SimpleDateFormat("d MMMM yyyy", newRu()).format(src)
+        today.minusDays(1) -> "Вчера"
+        else -> DateTimeFormatter.ofPattern("d MMMM yyyy", Locale("ru"))
+            .format(date)
     }
 } catch (_: Exception) { "" }
 
-private fun newRu(): java.text.DateFormatSymbols {
-    val s = java.text.DateFormatSymbols(Locale.getDefault())
-    s.months = arrayOf("января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря")
-    return s
-}
-
-fun dayKey(iso: String): String = iso.take(10)
+fun dayKey(iso: String): String =
+    parseIsoInstant(iso)?.let { localDate(it).toString() } ?: iso.take(10)
 
 fun fmtBytes(n: Long?): String {
     if (n == null || n <= 0) return ""
