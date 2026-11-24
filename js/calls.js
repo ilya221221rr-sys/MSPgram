@@ -476,6 +476,13 @@ export async function startCall(chat, withVideo) {
   syncUI(c);
   startRingtone('out'); // гудки, пока собеседник не ответил
 
+  // FCM-пуш получателю (нативное приложение-компаньон: уведомление о звонке)
+  try {
+    sb.functions.invoke('send-fcm', {
+      body: { type: 'call', to_user_id: other.id, caller_name: myName, video: withVideo },
+    });
+  } catch { /* пуш не влияет на звонок */ }
+
   wireCommon(chan, c)
     .on('broadcast', { event: 'call-accept' }, async ({ payload }) => {
       if (call !== c || payload.callId !== c.id || c.pc) return; // c.pc: защита от двойного accept

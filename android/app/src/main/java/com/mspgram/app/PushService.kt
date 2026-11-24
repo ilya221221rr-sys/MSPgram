@@ -13,37 +13,42 @@ import kotlinx.coroutines.launch
 
 // Push при ЗАКРЫТОМ приложении: сервер (send-fcm) шлёт data-сообщение
 // через FCM → Android будит этот сервис → показываем уведомление.
+// Компаньон: kind=message — новое сообщение, kind=call — входящий звонок.
 class PushService : FirebaseMessagingService() {
+
+    companion object {
+        const val SITE_URL = "https://ilya221221rr-sys.github.io/MSPgram/"
+    }
 
     override fun onMessageReceived(msg: RemoteMessage) {
         val d = msg.data
-        val title = d["title"] ?: "MSPgram"
+        val isCall = d["kind"] == "call"
+        val title = d["title"] ?: (if (isCall) "Входящий звонок" else "MSPgram")
         val body = d["body"] ?: ""
-        val chatId = d["chatId"]
-        val tag = d["tag"] ?: "msp"
+        val tag = d["tag"] ?: (if (isCall) "msp-call" else "msp")
 
         val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-        val channel = NotificationChannel("messages", "Сообщения", NotificationManager.IMPORTANCE_HIGH)
-        nm.createNotificationChannel(channel)
+        val channelId = if (isCall) "calls" else "messages"
+        val channelName = if (isCall) "Звонки" else "Сообщения"
+        nm.createNotificationChannel(NotificationChannel(channelId, channelName, NotificationManager.IMPORTANCE_HIGH))
 
-        val intent = Intent(this, MainActivity::class.java)
-        if (chatId != null) intent.putExtra("chatId", chatId)
+        // приложение-компаньон: тап открывает сайт (мессенджер живёт в браузере)
+        val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(SITE_URL))
         intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
         val pi = PendingIntent.getActivity(
-            this,
-            (chatId ?: "root").hashCode(),
-            intent,
+            this, tag.hashCode(), intent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
 
-        val n = NotificationCompat.Builder(this, "messages")
+        val n = NotificationCompat.Builder(this, channelId)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle(title)
             .setContentText(body)
             .setAutoCancel(true)
             .setContentIntent(pi)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setVibrate(longArrayOf(200, 100, 200))
+            .setCategory(if (isCall) NotificationCompat.CATEGORY_CALL else NotificationCompat.CATEGORY_MESSAGE)
+            .setVibrate(if (isCall) longArrayOf(400, 200, 400, 200, 400) else longArrayOf(200, 100, 200))
             .build()
         nm.notify(tag.hashCode(), n)
     }

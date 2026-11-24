@@ -1311,3 +1311,10 @@ input::placeholder, textarea::placeholder { color: #5c688a; }
 .stat-bar { width: 100%; max-width: 34px; background: linear-gradient(180deg, var(--accent), var(--accent2)); border-radius: 6px 6px 2px 2px; min-height: 2px; }
 .stat-day { font-size: 10px; color: var(--muted); }
 .adm-done { opacity: .55; }
+
+
+/* кнопка скачивания APK в герое входа (нативное приложение-компаньон) */
+.hero-apk {
+  display: inline-flex; align-items: center; gap: 8px;
+  margin-top: 16px; text-decoration: none; font-size: 15px;
+}
