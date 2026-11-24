@@ -68,6 +68,11 @@ import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Системные панели оформлены в той же палитре, что и нативный интерфейс.
+        window.statusBarColor = android.graphics.Color.rgb(11, 16, 32)
+        window.navigationBarColor = android.graphics.Color.rgb(11, 16, 32)
+        window.decorView.systemUiVisibility = 0
+        window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         Supa.init(this)
         Prefs.init(this)
         Calls.init(this)
@@ -122,8 +127,9 @@ fun LoginScreen(onEnter: () -> Unit) {
 
     // auth-hero + auth-card (style.css): логотип, слоган, карточка с табами
     Column(
-        Modifier.fillMaxSize().background(DarkBg).imePadding()
-            .verticalScroll(rememberScrollState()).padding(20.dp),
+        Modifier.fillMaxSize()
+            .background(Brush.radialGradient(listOf(Color(0x443E63DD), Color(0x227C5BFF), DarkBg), radius = 900f))
+            .imePadding().verticalScroll(rememberScrollState()).padding(20.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -137,12 +143,24 @@ fun LoginScreen(onEnter: () -> Unit) {
         Text("MSPgram", fontSize = 32.sp, fontWeight = FontWeight.ExtraBold, color = TextC)
         Text(
             "Мессенджер нового поколения.\nСерверы и каналы — как в Discord.\nСкорость и удобство — как в Telegram.",
-            fontSize = 13.sp, color = MutedText, lineHeight = 19.sp,
-            modifier = Modifier.padding(vertical = 10.dp),
+            fontSize = 14.sp, color = MutedText, lineHeight = 20.sp,
+            modifier = Modifier.padding(vertical = 8.dp).widthIn(max = 390.dp),
         )
-        Spacer(Modifier.size(8.dp))
+        Row(
+            Modifier.widthIn(max = 390.dp).fillMaxWidth().padding(bottom = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            listOf("💬 Чаты", "👥 Сообщества", "✨ MSP AI").forEach { label ->
+                Box(
+                    Modifier.background(Color(0x1A5B8CFF), RoundedCornerShape(50))
+                        .border(1.dp, Color(0x385B8CFF), RoundedCornerShape(50))
+                        .padding(horizontal = 9.dp, vertical = 5.dp),
+                ) { Text(label, color = Color(0xFF9DB4FF), fontSize = 10.sp, fontWeight = FontWeight.Medium) }
+            }
+        }
         Column(
-            Modifier.fillMaxWidth()
+            Modifier.fillMaxWidth().widthIn(max = 390.dp)
                 .background(Color(0xE6111827), RoundedCornerShape(22.dp))
                 .border(1.dp, Color(0x405D6EA0), RoundedCornerShape(22.dp))
                 .padding(horizontal = 26.dp, vertical = 30.dp),
