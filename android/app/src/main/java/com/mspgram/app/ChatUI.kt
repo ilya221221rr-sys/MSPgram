@@ -137,6 +137,14 @@ fun ChatScreen(me: Profile, chatId: String, onBack: () -> Unit) {
     var circleOpen by remember { mutableStateOf(false) }
     var circlePending by remember { mutableStateOf(false) }
 
+    // паритет с сайтом: догрузка истории, кнопка «вниз», переход к сообщению, каналы-dropdown
+    var hasMore by remember(chatId) { mutableStateOf(false) }
+    var loadingEarlier by remember { mutableStateOf(false) }
+    var jumpTarget by remember { mutableStateOf<String?>(null) }
+    var channelMenuOpen by remember { mutableStateOf(false) }
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
+
     val scope = rememberCoroutineScope()
     val ctx = LocalContext.current
     val acc = accentColor(Prefs.get().accent)
@@ -172,16 +180,67 @@ fun ChatScreen(me: Profile, chatId: String, onBack: () -> Unit) {
             ChatSession.channelId.value = null
         }
         try {
-            ChatSession.messages.value = Supa.loadMessages(chatId, ChatSession.channelId.value)
+            val initial = Supa.loadMessages(chatId, ChatSession.channelId.value)
+            ChatSession.messages.value = initial
+            hasMore = initial.size >= 60
             Supa.loadReactions(ChatSession.messages.value.map { it.id })
             chat.pinned_message_id?.let { pid ->
                 ChatSession.pinned.value = ChatSession.messages.value.firstOrNull { it.id == pid }
+                    ?: Supa.findMessage(chatId, pid)
             }
             Supa.markRead(chatId)
             Supa.markDelivered(chatId)
         } catch (e: Exception) { err = e.message ?: "Ошибка загрузки" }
         Realtime.join("typing-$chatId")
     }
+    // ---------- догрузка истории (chatview.js load-earlier) ----------
+    fun loadEarlier() {
+        if (loadingEarlier || !hasMore) return
+        val first = ChatSession.messages.value.firstOrNull() ?: return
+        loadingEarlier = true
+        scope.launch {
+            try {
+                val older = Supa.loadMessagesBefore(chatId, ChatSession.channelId.value, first.created_at)
+                hasMore = older.size >= 50
+                if (older.isNotEmpty()) {
+                    ChatSession.messages.value = older + ChatSession.messages.value
+                    Supa.loadReactions(older.map { it.id })
+                    // держим первый загруженный элемент в кадре
+                    listState.scrollToItem(older.size + 1)
+                }
+            } catch (e: Exception) { err = e.message ?: "Ошибка" }
+            loadingEarlier = false
+        }
+    }
+
+    // ---------- переход к сообщению с подсветкой (chatview.js jumpToMessage) ----------
+    fun jumpToMessage(msgId: String) {
+        scope.launch {
+            val msgs = ChatSession.messages.value
+            val idx = msgs.indexOfFirst { it.id == msgId }
+            if (idx >= 0) {
+                listState.animateScrollToItem(idx + 1)
+                jumpTarget = msgId
+            } else {
+                val target = Supa.findMessage(chatId, msgId)
+                if (target == null) { Calls.toastMsg("Сообщение не найдено"); return@launch }
+                val before = Supa.loadMessagesBefore(chatId, ChatSession.channelId.value, target.created_at, limit = 50)
+                ChatSession.messages.value = before + target + msgs
+                Supa.loadReactions((before + listOf(target)).map { it.id })
+                val newIdx = before.size + 1
+                listState.scrollToItem(newIdx)
+                jumpTarget = msgId
+            }
+        }
+    }
+    // снять подсветку через 1.3с (row.flash)
+    LaunchedEffect(jumpTarget) {
+        if (jumpTarget != null) {
+            kotlinx.coroutines.delay(1300)
+            jumpTarget = null
+        }
+    }
+
     DisposableEffect(chatId) {
         onDispose {
             Realtime.leave("typing-$chatId")
@@ -230,14 +289,45 @@ fun ChatScreen(me: Profile, chatId: String, onBack: () -> Unit) {
                     Text(sub, color = if (ChatSession.typingText().isNotEmpty()) acc else MutedText, fontSize = 11.5.sp, maxLines = 1)
                 }
             }
-            // каналы сервера — пилюля в шапке (#channel-pill)
-            if (chat.type == "group" && channels.size > 1) {
-                Text(
-                    "#${channels.firstOrNull { it.id == ChatSession.channelId.value }?.name ?: "общий"}",
-                    fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = TextC,
-                    modifier = Modifier.background(DarkSurface2, RoundedCornerShape(50))
-                        .clickable { infoOpen = true }.padding(horizontal = 10.dp, vertical = 5.dp),
-                )
+            // каналы сервера — пилюля открывает dropdown (chatview.js toggleChannelMenu)
+            if (chat.type == "group" && channels.isNotEmpty()) {
+                Box {
+                    Text(
+                        "#${channels.firstOrNull { it.id == ChatSession.channelId.value }?.name ?: "общий"}",
+                        fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = TextC,
+                        modifier = Modifier.background(DarkSurface2, RoundedCornerShape(50))
+                            .border(1.dp, LineC, RoundedCornerShape(50))
+                            .clickable { channelMenuOpen = !channelMenuOpen }.padding(horizontal = 12.dp, vertical = 6.dp),
+                    )
+                    if (channelMenuOpen) {
+                        Column(
+                            Modifier.background(DarkSurface, RoundedCornerShape(14.dp))
+                                .border(1.dp, LineC, RoundedCornerShape(14.dp))
+                                .padding(vertical = 6.dp),
+                        ) {
+                            channels.forEach { ch ->
+                                val on = ch.id == ChatSession.channelId.value
+                                Text(
+                                    (if (on) "•  " else "   ") + "#${ch.name}",
+                                    fontSize = 14.sp, fontWeight = if (on) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (on) acc else TextC,
+                                    modifier = Modifier.clickable {
+                                        channelMenuOpen = false
+                                        if (!on) {
+                                            ChatSession.channelId.value = ch.id
+                                            scope.launch {
+                                                try {
+                                                    ChatSession.messages.value = Supa.loadMessages(chatId, ch.id)
+                                                    Supa.loadReactions(ChatSession.messages.value.map { it.id })
+                                                } catch (_: Exception) { }
+                                            }
+                                        }
+                                    }.padding(horizontal = 14.dp, vertical = 8.dp),
+                                )
+                            }
+                        }
+                    }
+                }
             }
             // icon-btn справа: звонки / ИИ / поиск / инфо
             if (chat.type == "direct" && !chat.isSaved()) {
@@ -282,21 +372,39 @@ fun ChatScreen(me: Profile, chatId: String, onBack: () -> Unit) {
         }
 
         // ---------- сообщения (обои v19) ----------
-        val listState = rememberLazyListState()
         LaunchedEffect(ChatSession.messages.value.size, ChatSession.version.value) {
             if (ChatSession.messages.value.isNotEmpty()) {
                 listState.animateScrollToItem(ChatSession.messages.value.size - 1)
             }
         }
+        // chat-empty: лого в пустом чате — уже в ChatWall
         ChatWall(Modifier.weight(1f).fillMaxWidth()) {
         LazyColumn(Modifier.fillMaxSize().padding(horizontal = 8.dp), state = listState) {
+            // load-earlier: пилюля panel2/accent (style.css .load-earlier)
+            if (hasMore) {
+                item {
+                    Box(Modifier.fillMaxWidth().padding(vertical = 6.dp), contentAlignment = Alignment.Center) {
+                        Text(
+                            if (loadingEarlier) "Загружаю…" else "Загрузить ещё ↑",
+                            color = acc, fontSize = 13.sp,
+                            modifier = Modifier.background(DarkSurface2, RoundedCornerShape(50))
+                                .border(1.dp, LineC, RoundedCornerShape(50))
+                                .clickable(enabled = !loadingEarlier) { loadEarlier() }
+                                .padding(horizontal = 16.dp, vertical = 6.dp),
+                        )
+                    }
+                }
+            }
             items(ChatSession.messages.value) { m ->
-                val prev = ChatSession.messages.value.getOrNull(ChatSession.messages.value.indexOf(m) - 1)
+                val msgsList = ChatSession.messages.value
+                val prev = msgsList.getOrNull(msgsList.indexOf(m) - 1)
                 if (prev == null || dayKey(prev.created_at) != dayKey(m.created_at)) {
                     DaySep(fmtDay(m.created_at))
                 }
                 MsgRow(me, chat, m,
                     revVersion = ChatSession.version.value,
+                    flash = jumpTarget == m.id,
+                    onJump = { jumpToMessage(it) },
                     onOpenMenu = { menuMsg = m },
                     onOpenImage = { viewerImg = it },
                     onPlayVoice = { playerVoice = m },
@@ -313,6 +421,19 @@ fun ChatScreen(me: Profile, chatId: String, onBack: () -> Unit) {
                 if (t.isNotEmpty()) Text(t, color = acc, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
                 Spacer(Modifier.size(8.dp))
             }
+        }
+        // scroll-down: круглая кнопка (style.css .scroll-down, right 18 bottom 96)
+        val atBottom = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index?.let { it >= listState.layoutInfo.totalItemsCount - 2 } ?: true
+        if (!atBottom) {
+            Box(
+                Modifier.align(Alignment.BottomEnd).padding(end = 18.dp, bottom = 16.dp)
+                    .size(44.dp).background(DarkSurface, CircleShape)
+                    .border(1.dp, LineC, CircleShape)
+                    .clickable {
+                        scope.launch { listState.animateScrollToItem(ChatSession.messages.value.size - 1) }
+                    },
+                contentAlignment = Alignment.Center,
+            ) { Text("↓", color = TextC, fontSize = 18.sp) }
         }
         }
 
@@ -561,6 +682,28 @@ fun ChatScreen(me: Profile, chatId: String, onBack: () -> Unit) {
                 menuMsg = null
             },
             onForward = { forwardMsg = mm; menuMsg = null },
+            onCopy = {
+                val cm = androidx.compose.ui.platform.LocalClipboardManager.current
+                cm.setText(androidx.compose.ui.text.AnnotatedString(mm.body ?: mm.attachment_url ?: ""))
+                Calls.toastMsg("Скопировано ✓")
+                menuMsg = null
+            },
+            onFav = {
+                scope.launch {
+                    try { Supa.saveToFavorites(mm); Calls.toastMsg("Сохранено в «Избранное» 🔖") }
+                    catch (e: Exception) { Calls.toastMsg("Ошибка: " + (e.message ?: "")) }
+                }
+                menuMsg = null
+            },
+            onAiPhoto = if (mm.attachment_type == "image" && !mm.attachment_url.isNullOrBlank()) ({
+                menuMsg = null
+                scope.launch {
+                    try {
+                        val ans = Ai.assistant(emptyList(), "Что на этом фото? Опиши кратко.", mm.attachment_url)
+                        Calls.toastMsg(ans.take(140))
+                    } catch (e: Exception) { Calls.toastMsg("Ошибка ИИ") }
+                }
+            }) else null,
             onDelete = {
                 scope.launch {
                     runCatching { Supa.deleteMessage(mm.id) }
@@ -700,6 +843,8 @@ fun MsgRow(
     chat: Chat,
     m: Message,
     revVersion: Int = 0, // версия реакций — форсирует рекомпозицию
+    flash: Boolean = false, // подсветка при переходе к сообщению (row.flash)
+    onJump: (String) -> Unit = {},
     onOpenMenu: () -> Unit = {},
     onOpenImage: (String) -> Unit = {},
     onPlayVoice: () -> Unit = {},
@@ -757,6 +902,10 @@ fun MsgRow(
                     ),
                 ),
             ) {
+                if (flash) {
+                    // подсветка перехода к сообщению (как row.flash на сайте, 1.3s)
+                    Box(Modifier.matchParentSize().background(accentColor(Prefs.get().accent).copy(alpha = 0.22f), RoundedCornerShape(16.dp)))
+                }
                 Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
                     if (m.forwarded_from != null) {
                         Text("↪ Переслано от ${m.forwarded_from}", color = MutedText, fontSize = 11.sp)
@@ -764,7 +913,8 @@ fun MsgRow(
                     // цитата (ответ)
                     m.reply_to?.let { rid ->
                         val orig = ChatSession.messages.value.firstOrNull { it.id == rid }
-                        Surface(color = DarkSurface2, shape = RoundedCornerShape(8.dp), modifier = Modifier.padding(bottom = 4.dp)) {
+                        Surface(color = DarkSurface2, shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.padding(bottom = 4.dp).clickable { onJump(rid) }) {
                             Column(Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
                                 Text(orig?.let { senderName(chat, it) } ?: "Сообщение", color = acc, fontSize = 11.sp)
                                 Text(orig?.let { previewOf(it) } ?: "сообщение удалено", color = MutedText, fontSize = 11.sp, maxLines = 1)
@@ -883,6 +1033,9 @@ fun MsgMenuSheet(
     onTranslate: () -> Unit,
     onSuggest: () -> Unit,
     onReact: (String) -> Unit,
+    onCopy: () -> Unit = {},
+    onFav: () -> Unit = {},
+    onAiPhoto: (() -> Unit)? = null,
 ) {
     val acc = accentColor(Prefs.get().accent)
     val own = m.sender_id == me.id
@@ -899,6 +1052,9 @@ fun MsgMenuSheet(
         }
         Spacer(Modifier.size(10.dp))
         MenuItem("↩ Ответить") { onReply() }
+        MenuItem("⧉ Копировать") { onCopy() }
+        MenuItem("🔖 В избранное") { onFav() }
+        if (onAiPhoto != null) MenuItem("✨ Спросить ИИ о фото") { onAiPhoto() }
         if (own) MenuItem("✏️ Изменить") { onEdit() }
         MenuItem("📌 ${if (chat.pinned_message_id == m.id) "Открепить" else "Закрепить"}") { onPin() }
         MenuItem("↪ Переслать") { onForward() }
@@ -1037,11 +1193,49 @@ class VoiceRecorder(private val ctx: android.content.Context) {
 
 // ---------- спойлеры ||текст|| (v19) ----------
 
+// linkify (chatview.js): ссылки кликабельны (#a8c6ff underline), @ник акцентом, свой ник — подсветка
+fun linkifyAnnotated(text: String): androidx.compose.ui.text.AnnotatedString {
+    val meNick = (Supa.me?.nickname ?: "").lowercase()
+    val sb = androidx.compose.ui.text.AnnotatedString.Builder()
+    val re = Regex("(https?://[^\\s]+[^\\s.,:;\"')\\]!?])|(@[\\p{L}\\p{N}_]{3,20})")
+    var last = 0
+    for (mm in re.findAll(text)) {
+        sb.append(text.substring(last, mm.range.first))
+        val token = mm.value
+        if (token.startsWith("http")) {
+            sb.pushLink(
+                androidx.compose.ui.text.link.LinkAnnotation.Url(
+                    token,
+                    androidx.compose.ui.text.TextLinkStyles(
+                        androidx.compose.ui.text.SpanStyle(color = Color(0xFFA8C6FF), textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline),
+                    ),
+                ),
+            )
+            sb.append(token)
+            sb.pop()
+        } else {
+            val isMe = token.substring(1).lowercase() == meNick
+            sb.pushStyle(
+                androidx.compose.ui.text.SpanStyle(
+                    color = accentColor(Prefs.get().accent),
+                    fontWeight = FontWeight.Bold,
+                    background = if (isMe) accentColor(Prefs.get().accent).copy(alpha = 0.25f) else Color.Transparent,
+                ),
+            )
+            sb.append(token)
+            sb.pop()
+        }
+        last = mm.range.last + 1
+    }
+    sb.append(text.substring(last))
+    return sb.toAnnotatedString()
+}
+
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun SpoilerText(text: String, scale: Float = 1f) {
     if (!text.contains("||")) {
-        Text(text, color = Color.White, fontSize = (15 * scale).sp)
+        Text(linkifyAnnotated(text), fontSize = (15 * scale).sp)
         return
     }
     val parts = text.split("||")
@@ -1056,14 +1250,13 @@ fun SpoilerText(text: String, scale: Float = 1f) {
                     shape = RoundedCornerShape(6.dp),
                 ) {
                     Text(
-                        if (revealed) part else part.map { '█' }.joinToString(""),
-                        color = if (revealed) Color.White else Color.Transparent,
+                        linkifyAnnotated(if (revealed) part else part.map { '█' }.joinToString("")),
                         fontSize = (15 * scale).sp,
                         modifier = Modifier.clickable { revealed = true }.padding(horizontal = 5.dp, vertical = 1.dp),
                     )
                 }
             } else {
-                Text(part, color = Color.White, fontSize = (15 * scale).sp)
+                Text(linkifyAnnotated(part), fontSize = (15 * scale).sp)
             }
         }
     }

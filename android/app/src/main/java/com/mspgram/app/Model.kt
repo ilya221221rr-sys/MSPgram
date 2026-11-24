@@ -191,6 +191,23 @@ data class AuthResp(
 @Serializable
 data class AuthUser(val id: String = "", val email: String? = null)
 
+// ---------- 2FA (supabase mfa) ----------
+@Serializable
+data class MfaFactor(
+    val id: String = "",
+    val factor_type: String = "totp",
+    val status: String = "",
+)
+
+@Serializable
+data class MfaChallengeBody(val factor_id: String)
+
+@Serializable
+data class MfaChallengeResp(val id: String = "")
+
+@Serializable
+data class MfaVerifyBody(val factor_id: String, val challenge_id: String, val code: String)
+
 // ---------- realtime события (Phoenix) ----------
 
 @Serializable

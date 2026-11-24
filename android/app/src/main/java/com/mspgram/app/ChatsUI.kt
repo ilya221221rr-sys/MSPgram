@@ -65,8 +65,13 @@ fun ChatsScreen(me: Profile, onOpen: (String) -> Unit) {
             Avatar(me.name, 34.dp, me.avatar_url, circle = true,
                 presence = if (Calls.state.inVoice.value) "online" else null)
             Spacer(Modifier.width(10.dp))
-            Text("MSPgram ", color = TextC, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-            Text("v26", color = MutedText, fontSize = 12.sp)
+            Text(
+                "MSPgram v26",
+                fontSize = 16.sp, fontWeight = FontWeight.ExtraBold,
+                style = androidx.compose.ui.text.TextStyle(
+                    brush = androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(Color(0xFFDFE8FF), Color(0xFF9DB4FF))),
+                ),
+            )
             Spacer(Modifier.weight(1f))
             IconBtn("＋") { showNewServer = true }
             IconBtn("🔍") { showSearch = true }

@@ -1,0 +1,56 @@
+# ============================================================
+#  Выкладывает готовый APK в GitHub Releases.
+#  Оттуда файл качается ПРЯМОЙ ссылкой — без входа в GitHub,
+#  прямо с телефона: releases → последний → app-debug.apk
+#  Запуск: Actions → «Выложить APK в Releases» → Run workflow
+# ============================================================
+name: Выложить APK в Releases
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+
+      - name: Сборка debug-APK
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle -p android assembleDebug --no-daemon 2>&1 | tee /tmp/build.log
+
+      - name: Ошибки сборки → аннотации
+        if: failure()
+        shell: bash
+        run: |
+          grep -E "^e: |FAILURE: Build|What went wrong|Caused by|Could not|A problem occurred" /tmp/build.log | grep -v "^> Task" | head -60 | cut -c1-220 | while IFS= read -r line; do
+            echo "::error ::$line"
+          done
+
+      - name: Публикация в Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          TAG="v$(date +%Y%m%d-%H%M)"
+          gh release create "$TAG" android/app/build/outputs/apk/debug/app-debug.apk \
+            --target main \
+            --title "MSPgram $TAG" \
+            --notes "Свежая сборка app-debug.apk. Прямая ссылка (без входа в GitHub):
+          https://github.com/ilya221221rr-sys/MSPgram/releases/download/$TAG/app-debug.apk"
+          echo "APK опубликован в release $TAG"
