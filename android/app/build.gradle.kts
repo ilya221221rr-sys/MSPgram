@@ -53,8 +53,8 @@ dependencies {
     // фото в чатах
     implementation("io.coil-kt:coil-compose:2.7.0")
 
-    // звонки (WebRTC) — тот же артефакт, что используют все Android-приложения
-    implementation("org.webrtc:google-webrtc:1.0.32006")
+    // звонки (WebRTC) — stream-webrtc-android (переизданный libwebrtc, пакеты org.webrtc те же)
+    implementation("io.getstream:stream-webrtc-android:1.3.10")
 
     // видео-кружки (запись камерой, как circles.js на сайте)
     implementation("androidx.camera:camera-video:1.3.4")
