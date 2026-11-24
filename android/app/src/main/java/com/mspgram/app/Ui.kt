@@ -315,13 +315,25 @@ fun fmtDay(iso: String): String {
         when (date) {
             today -> "Сегодня"
             today.minusDays(1) -> "Вчера"
-            else -> DateTimeFormatter.ofPattern("d MMMM yyyy", Locale("ru")).format(date)
+            else -> DateTimeFormatter.ofPattern("d MMMM", Locale("ru")).format(date)
         }
     } catch (_: Exception) { "" }
 }
 
 fun dayKey(iso: String): String =
     parseIsoInstant(iso)?.let { localDate(it).toString() } ?: iso.take(10)
+
+// В списке чатов сайт показывает время сегодня, «вчера» или дату dd.MM.
+fun fmtListTime(iso: String): String {
+    val instant = parseIsoInstant(iso) ?: return ""
+    val date = localDate(instant)
+    val today = LocalDate.now(ZoneId.systemDefault())
+    return when (date) {
+        today -> fmtTime(iso)
+        today.minusDays(1) -> "вчера"
+        else -> DateTimeFormatter.ofPattern("dd.MM", Locale.getDefault()).format(date)
+    }
+}
 
 fun fmtBytes(n: Long?): String {
     if (n == null || n <= 0) return ""
