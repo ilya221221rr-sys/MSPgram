@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import kotlinx.serialization.encodeToString
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
