@@ -7,6 +7,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -214,22 +215,23 @@ fun initials(name: String): String {
 }
 
 @Composable
-fun Avatar(name: String, dpSize: Dp, imageUrl: String? = null, presence: String? = null, circle: Boolean = false) {
+fun Avatar(name: String, dpSize: Dp, imageUrl: String? = null, presence: String? = null, circle: Boolean = true) {
     val shape = if (circle) CircleShape else RoundedCornerShape(dpSize * 0.26f) // .avatar radius 12/46
     androidx.compose.foundation.layout.BoxWithConstraints(Modifier.size(dpSize)) {
-        if (imageUrl != null) {
-            coil.compose.AsyncImage(
-                model = imageUrl,
-                contentDescription = null,
-                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                modifier = Modifier.size(dpSize).background(DarkSurface2, shape),
-            )
-        } else {
-            Box(
-                Modifier.size(dpSize).background(avatarColor(name), shape),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(initials(name), color = Color.White, fontWeight = FontWeight.Bold, fontSize = (dpSize.value / 2.9f).sp)
+        Box(
+            Modifier.size(dpSize).clip(shape).background(avatarColor(name)),
+            contentAlignment = Alignment.Center,
+        ) {
+            // Инициалы остаются под картинкой как fallback, если URL временно недоступен.
+            Text(initials(name), color = Color.White, fontWeight = FontWeight.Bold,
+                fontSize = (dpSize.value / 2.9f).sp)
+            if (!imageUrl.isNullOrBlank()) {
+                coil.compose.AsyncImage(
+                    model = imageUrl,
+                    contentDescription = null,
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize().clip(shape),
+                )
             }
         }
         if (presence != null) {
