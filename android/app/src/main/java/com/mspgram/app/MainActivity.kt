@@ -28,6 +28,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -130,6 +133,7 @@ fun LoginScreen(onEnter: () -> Unit) {
     Column(
         Modifier.fillMaxSize()
             .background(Brush.radialGradient(listOf(Color(0x443E63DD), Color(0x227C5BFF), DarkBg), radius = 900f))
+            .windowInsetsPadding(WindowInsets.safeDrawing)
             .imePadding().verticalScroll(rememberScrollState()).padding(20.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -457,7 +461,7 @@ fun MainScreen(me: Profile, jumpChat: String?, onLogout: () -> Unit) {
     }
 
     // ---------- контент: рейл + содержимое (раскладка сайта) ----------
-    Box(Modifier.fillMaxSize().background(DarkBg)) {
+    Box(Modifier.fillMaxSize().background(DarkBg).windowInsetsPadding(WindowInsets.safeDrawing)) {
         val chatOpen = openChatId != null
         if (!chatOpen) {
             val deviceConfig = androidx.compose.ui.platform.LocalConfiguration.current
