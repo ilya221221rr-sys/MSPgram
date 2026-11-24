@@ -6,6 +6,7 @@ import androidx.activity.compose.BackHandler
 import android.media.MediaPlayer
 import android.media.MediaRecorder
 import android.net.Uri
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -1037,6 +1038,7 @@ fun SpoilerText(text: String, scale: Float = 1f) {
 //  Сервер-инфо (chatview.js chat-info + extras.js openGroupSettings)
 // ============================================================
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun ServerInfoDialog(
     me: Profile,
@@ -1116,6 +1118,11 @@ fun ServerInfoDialog(
                 }
             } else {
                 // ---------- основной вид ----------
+                LaunchedEffect(addNick) {
+                    if (addNick.length < 2) { found = emptyList(); return@LaunchedEffect }
+                    delay(500)
+                    found = runCatching { Supa.searchUsers(addNick) }.getOrDefault(emptyList())
+                }
                 LazyColumn(Modifier.size(width = 320.dp, height = 340.dp)) {
                     // каналы
                     item { Text("${channels.size} канал(ов)", color = MutedText, fontSize = 11.sp, modifier = Modifier.padding(vertical = 4.dp)) }
@@ -1184,11 +1191,6 @@ fun ServerInfoDialog(
                             placeholder = { Text("Поиск по нику", color = MutedText) },
                             modifier = Modifier.fillMaxWidth(), singleLine = true,
                         )
-                    }
-                    LaunchedEffect(addNick) {
-                        if (addNick.length < 2) { found = emptyList(); return@LaunchedEffect }
-                        delay(500)
-                        found = runCatching { Supa.searchUsers(addNick) }.getOrDefault(emptyList())
                     }
                     items(found.take(5)) { pr ->
                         if (chat.members.none { it.user_id == pr.id }) {

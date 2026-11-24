@@ -125,6 +125,8 @@ object Calls {
     val state = CallState()
     private val scope = CoroutineScope(Dispatchers.Main)
 
+    fun toastMsg(msg: String) = state.toastMsg(msg)
+
     private lateinit var factory: PeerConnectionFactory
     private var ready = false
 
