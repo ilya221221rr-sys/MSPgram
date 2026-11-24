@@ -429,17 +429,22 @@ fun MainScreen(me: Profile, jumpChat: String?, onLogout: () -> Unit) {
     Box(Modifier.fillMaxSize().background(DarkBg)) {
         val chatOpen = openChatId != null
         if (!chatOpen) {
+            val compactLayout = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp < 700
             Row(Modifier.fillMaxSize()) {
-                val railVersion by Supa.chatListVersion.collectAsState() // подписка: рейл живёт вместе со списком
-                val railUnread = Supa.unread.mapValues { it.value.toInt() }
-                ServerRail(
-                    servers = Supa.chats.filter { it.type == "group" && it.myFlags(me.id)?.archived != true }.also { railVersion },
-                    activeChatId = null,
-                    unread = railUnread,
-                    onHome = { tab = 0 },
-                    onServer = { c -> openChatId = c.id },
-                    onAdd = { /* диалог нового сервера открывается из списка чатов */ scope.launch { } },
-                )
+                // На телефонах сайт показывает список на всю ширину; серверный рейл
+                // оставляем для широких экранов, чтобы не сжимать мобильный интерфейс.
+                if (!compactLayout) {
+                    val railVersion by Supa.chatListVersion.collectAsState()
+                    val railUnread = Supa.unread.mapValues { it.value.toInt() }
+                    ServerRail(
+                        servers = Supa.chats.filter { it.type == "group" && it.myFlags(me.id)?.archived != true }.also { railVersion },
+                        activeChatId = null,
+                        unread = railUnread,
+                        onHome = { tab = 0 },
+                        onServer = { c -> openChatId = c.id },
+                        onAdd = { scope.launch { } },
+                    )
+                }
                 Box(Modifier.weight(1f)) {
                     when (tab) {
                         0 -> ChatsScreen(me, onOpen = { openChatId = it })
