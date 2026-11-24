@@ -313,8 +313,8 @@ fun CompanionScreen(me: Profile, onLogout: () -> Unit) {
     // при старте: разрешение на уведомления + привязка FCM-токена к аккаунту
     LaunchedEffect(Unit) {
         val need = android.os.Build.VERSION.SDK_INT >= 33 &&
-            androidx.core.content.ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.POST_NOTIFICATIONS)
-                != android.content.pm.PackageManager.PERMISSION_GRANTED
+            androidx.core.content.ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.POST_NOTIFICATIONS) !=
+                android.content.pm.PackageManager.PERMISSION_GRANTED
         if (need) notifPerm.launch(android.Manifest.permission.POST_NOTIFICATIONS)
         else registerFcm(ctx)
     }
