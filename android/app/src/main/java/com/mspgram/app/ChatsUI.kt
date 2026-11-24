@@ -55,6 +55,9 @@ object FolderStore {
 @Composable
 fun ChatsScreen(me: Profile, onOpen: (String) -> Unit) {
     val version by Supa.chatListVersion.collectAsState()
+    val onlineUsers by Realtime.online.collectAsState()
+    val liveStatuses by Realtime.presenceStatus.collectAsState()
+    LaunchedEffect(onlineUsers, liveStatuses) { Supa.chatListVersion.value++ }
     var filter by remember { mutableStateOf("all") } // all | unread | direct | groups | archive | f:<id>
     var searchQ by remember { mutableStateOf("") }
     var showSearch by remember { mutableStateOf(false) }
