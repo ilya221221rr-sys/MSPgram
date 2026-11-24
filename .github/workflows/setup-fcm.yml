@@ -1,0 +1,98 @@
+# ============================================================
+#  MSPgram v25 «Native» — включение FCM push для Android-приложения
+#  Запуск: вкладка Actions → «Включить FCM push для Android» → Run.
+#
+#  ОДИН раз перед запуском добавь секрет репозитория:
+#   Settings → Secrets and variables → Actions → New repository secret
+#   Имя: FCM_SERVICE_ACCOUNT_JSON
+#   Значение: СОДЕРЖИМОЕ JSON-файла сервисного аккаунта Firebase
+#   (Firebase console → Project settings → Service accounts →
+#    Generate new private key → открой файл и скопируй весь текст)
+# ============================================================
+name: Включить FCM push для Android
+on:
+  workflow_dispatch:
+env:
+  PROJECT_REF: xqjtycvfjamnqtkznyio
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Проверка токена Supabase
+        env:
+          RAW_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          if [ -z "$RAW_TOKEN" ]; then
+            echo "::error title=Нет токена::Секрет SUPABASE_ACCESS_TOKEN не задан (он появился при настройке web-push)"
+            exit 1
+          fi
+          TOKEN="$(printf '%s' "$RAW_TOKEN" | tr -d '[:space:]')"
+          echo "::add-mask::$TOKEN"
+          CODE="$(curl -sS -o /dev/null -w '%{http_code}' \
+            "https://api.supabase.com/v1/projects/$PROJECT_REF" \
+            -H "Authorization: Bearer $TOKEN")"
+          echo "Supabase API: HTTP $CODE"
+          if [ "$CODE" != "200" ]; then
+            echo "::error title=Токен недействителен ($CODE)::Создай новый на supabase.com/dashboard/account/tokens"; exit 1
+          fi
+          echo "SUPABASE_ACCESS_TOKEN=$TOKEN" >> "$GITHUB_ENV"
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Проверка секретов
+        env:
+          SA_JSON: ${{ secrets.FCM_SERVICE_ACCOUNT_JSON }}
+        run: |
+          if [ -z "$SA_JSON" ]; then
+            echo "::error title=Нет FCM_SERVICE_ACCOUNT_JSON::Добавь секрет репозитория — см. шапку этого workflow"
+            exit 1
+          fi
+          echo "Секрет сервисного аккаунта найден (${#SA_JSON} символов)"
+      - name: Секреты функции (FCM)
+        env:
+          SA_JSON: ${{ secrets.FCM_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          WH="$(openssl rand -hex 32)"
+          echo "::add-mask::$WH"
+          echo "::add-mask::$SA_JSON"
+          supabase secrets set --remote="$PROJECT_REF" --yes \
+            FCM_SERVICE_ACCOUNT_JSON="$SA_JSON" \
+            FCM_WEBHOOK_SECRET="$WH"
+          echo "FCM_WEBHOOK_SECRET=$WH" >> "$GITHUB_ENV"
+      - name: Деплой функции send-fcm
+        run: |
+          supabase functions deploy send-fcm --remote="$PROJECT_REF" --no-verify-jwt --use-api --yes
+      - name: SQL — миграция и настройки
+        run: |
+          set -euo pipefail
+          run_sql() {
+            local body code
+            body="$(mktemp)"
+            code="$(jq -n --rawfile q "$1" '{query:$q}' | curl -sS -o "$body" -w '%{http_code}' \
+              -X POST "https://api.supabase.com/v1/projects/$PROJECT_REF/database/query" \
+              -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H 'Content-Type: application/json' -d @-)"
+            if [ "$code" -lt 200 ] || [ "$code" -ge 300 ]; then
+              echo "::error title=SQL не выполнился::HTTP $code"; cat "$body"; exit 1
+            fi
+            echo "OK: SQL применён"
+          }
+          run_sql supabase/migration-13-fcm.sql
+          printf "insert into public.push_settings (key, value) values ('fcm_function_url', 'https://%s.supabase.co/functions/v1/send-fcm'), ('fcm_webhook_secret', '%s') on conflict (key) do update set value = excluded.value;" \
+            "$PROJECT_REF" "$FCM_WEBHOOK_SECRET" > /tmp/fcm-settings.sql
+          run_sql /tmp/fcm-settings.sql
+      - name: Проверка функции
+        run: |
+          for i in 1 2 3 4 5; do
+            R="$(curl -sS -X POST "https://$PROJECT_REF.supabase.co/functions/v1/send-fcm" \
+                 -H 'Content-Type: application/json' -d '{"type":"ping"}' || true)"
+            echo "Ответ: $R"
+            if echo "$R" | jq -e '.ready == true' >/dev/null 2>&1; then
+              echo "✅ FCM push готов. Теперь собери APK: Actions → «Собрать Android-приложение»"
+              exit 0
+            fi
+            sleep 6
+          done
+          echo "::error title=Функция не готова::Смотри ответ выше"
+          exit 1
