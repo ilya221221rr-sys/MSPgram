@@ -2,7 +2,9 @@ package com.mspgram.app
 
 import androidx.compose.foundation.background
 import kotlinx.serialization.encodeToString
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.foundation.layout.size
@@ -89,7 +91,7 @@ fun accentColor(name: String): Color = when (name) {
     "green" -> Color(0xFF3DD68C)
     "pink" -> Color(0xFFFF6BA9)
     "orange" -> Color(0xFFFF8A4C)
-    else -> skinAccent(Prefs.get().skin)
+    else -> skinPalette(Prefs.get().skin).accent
 }
 
 fun accentGradient(name: String): List<Color> = when (name) {
@@ -164,22 +166,37 @@ fun ChatWall(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
 }
 
 
+// avatarColor(utils.js): стабильный цвет по нику, hsl(h 55% 42%)
+fun avatarColor(seed: String): Color {
+    var h = 0
+    for (ch in seed) h = (h * 31 + ch.code) % 360
+    return Color.hsl(h.toFloat(), 0.55f, 0.42f)
+}
+
+// initials(utils.js): 2 буквы если 2 слова
+fun initials(name: String): String {
+    val parts = name.trim().split(" ").filter { it.isNotBlank() }
+    if (parts.size >= 2) return (parts[0][0] + parts[1][0].toString()).uppercase()
+    return (parts.firstOrNull() ?: "?").take(1).uppercase()
+}
+
 @Composable
-fun Avatar(name: String, dpSize: Dp, imageUrl: String? = null, presence: String? = null) {
+fun Avatar(name: String, dpSize: Dp, imageUrl: String? = null, presence: String? = null, circle: Boolean = false) {
+    val shape = if (circle) CircleShape else RoundedCornerShape(dpSize * 0.26f) // .avatar radius 12/46
     androidx.compose.foundation.layout.BoxWithConstraints(Modifier.size(dpSize)) {
         if (imageUrl != null) {
             coil.compose.AsyncImage(
                 model = imageUrl,
                 contentDescription = null,
-                modifier = Modifier.size(dpSize).background(DarkSurface2, CircleShape),
+                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                modifier = Modifier.size(dpSize).background(DarkSurface2, shape),
             )
         } else {
             Box(
-                Modifier.size(dpSize)
-                    .background(Brush.linearGradient(accentGradient(Prefs.get().accent)), CircleShape),
+                Modifier.size(dpSize).background(avatarColor(name), shape),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(name.take(1).uppercase(), color = Color.White, fontWeight = FontWeight.Bold, fontSize = (dpSize.value / 2.4f).sp)
+                Text(initials(name), color = Color.White, fontWeight = FontWeight.Bold, fontSize = (dpSize.value / 2.9f).sp)
             }
         }
         if (presence != null) {
@@ -189,9 +206,11 @@ fun Avatar(name: String, dpSize: Dp, imageUrl: String? = null, presence: String?
                 "dnd" -> DangerColor
                 else -> MutedText
             }
+            // online-dot: 12px, граница 2.5 panel
             Box(
-                Modifier.size(dpSize / 3.2f).align(Alignment.BottomEnd)
-                    .background(c, CircleShape),
+                Modifier.size(dpSize / 3.4f).align(Alignment.BottomEnd)
+                    .background(c, CircleShape)
+                    .border((dpSize.value / 14f).dp, DarkSurface, CircleShape),
             )
         }
     }
@@ -331,4 +350,204 @@ object DraftStore {
     }
     fun clear(chatId: String) = set(chatId, "")
     fun anyIn(chatId: String): Boolean = get(chatId).isNotBlank()
+}
+
+
+// ============================================================
+//  Виджеты в стиле сайта (style.css / v18.css / v20.css)
+// ============================================================
+
+// lf-chip: пилюля-фильтр списка (v18.css): panel2, 12.5px 600; on — градиент
+@Composable
+fun LfChip(label: String, on: Boolean, badge: Int = 0, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .then(
+                if (on) Modifier.background(
+                    Brush.linearGradient(listOf(accentColor(Prefs.get().accent), Accent2)),
+                    RoundedCornerShape(50),
+                ) else Modifier.background(DarkSurface2, RoundedCornerShape(50)),
+            )
+            .clickable { onClick() }
+            .padding(horizontal = 13.dp, vertical = 6.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(label, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold,
+                color = if (on) Color.White else MutedText)
+            if (badge > 0) {
+                Spacer(Modifier.width(4.dp))
+                Box(Modifier.background(
+                    if (on) Color.White.copy(alpha = 0.25f) else DangerColor,
+                    RoundedCornerShape(8.dp),
+                ).padding(horizontal = 6.dp, vertical = 0.dp)) {
+                    Text(if (badge > 99) "99+" else "$badge", fontSize = 10.5.sp, color = Color.White)
+                }
+            }
+        }
+    }
+}
+
+// .btn.primary: градиент, radius 10, glow
+@Composable
+fun PrimaryBtn(label: String, enabled: Boolean = true, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .background(
+                if (enabled) Brush.linearGradient(listOf(accentColor(Prefs.get().accent), Accent2))
+                else DarkSurface2,
+                RoundedCornerShape(10.dp),
+            )
+            .clickable(enabled = enabled) { onClick() }
+            .padding(horizontal = 18.dp, vertical = 10.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(label, color = if (enabled) Color.White else MutedText, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+    }
+}
+
+// day-sep: пилюля-дата по центру (style.css)
+@Composable
+fun DaySep(text: String) {
+    Box(Modifier.fillMaxWidth().padding(vertical = 6.dp), contentAlignment = Alignment.Center) {
+        Text(
+            text, fontSize = 11.5.sp, color = MutedText,
+            modifier = Modifier.background(DarkSurface2, RoundedCornerShape(50))
+                .border(1.dp, LineC, RoundedCornerShape(50))
+                .padding(horizontal = 12.dp, vertical = 4.dp),
+        )
+    }
+}
+
+// ---------- сервер-рейл (style.css .server-rail, ширина 58 на телефоне) ----------
+
+@Composable
+fun ServerRail(
+    servers: List<Chat>,
+    activeChatId: String?,
+    onHome: () -> Unit,
+    onServer: (Chat) -> Unit,
+    onAdd: () -> Unit,
+) {
+    Column(
+        Modifier.width(58.dp).fillMaxHeight().background(RailBg),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Spacer(Modifier.height(10.dp))
+        // rail-btn.home: градиент + логотип
+        Box(
+            Modifier.size(42.dp).background(
+                Brush.linearGradient(listOf(accentColor(Prefs.get().accent), Accent2)),
+                RoundedCornerShape(13.dp),
+            ).clickable { onHome() },
+            contentAlignment = Alignment.Center,
+        ) { Text("✈️", fontSize = 20.sp) }
+        Spacer(Modifier.height(6.dp))
+        Box(Modifier.width(32.dp).height(2.dp).background(LineC, RoundedCornerShape(1.dp)))
+        Spacer(Modifier.height(6.dp))
+        // серверы: сквиркл 42, активный — кольцо акцента
+        servers.forEach { c ->
+            val active = activeChatId == c.id
+            Box(
+                Modifier.size(42.dp).background(DarkSurface2, RoundedCornerShape(13.dp))
+                    .then(if (active) Modifier.border(2.dp, accentColor(Prefs.get().accent), RoundedCornerShape(13.dp)) else Modifier)
+                    .clickable { onServer(c) },
+                contentAlignment = Alignment.Center,
+            ) {
+                if (c.avatar_url != null) {
+                    coil.compose.AsyncImage(model = c.avatar_url, contentDescription = null,
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                        modifier = Modifier.size(42.dp).background(DarkSurface2, RoundedCornerShape(13.dp)))
+                } else {
+                    Text((c.title ?: "С").take(1).uppercase(), color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
+                }
+            }
+            Spacer(Modifier.height(6.dp))
+        }
+        // rail-btn.add: пунктирная рамка, зелёный ＋
+        Box(
+            Modifier.size(42.dp).background(Color.Transparent, RoundedCornerShape(13.dp))
+                .border(1.dp, LineC, RoundedCornerShape(13.dp))
+                .clickable { onAdd() },
+            contentAlignment = Alignment.Center,
+        ) { Text("＋", color = OkColor, fontSize = 20.sp, fontWeight = FontWeight.Bold) }
+    }
+}
+
+// ---------- нижний док (v20.css .side-nav.dock) ----------
+
+@Composable
+fun Dock(
+    tab: Int,
+    me: Profile,
+    onChats: () -> Unit,
+    onFriends: () -> Unit,
+    onAi: () -> Unit,
+    onSaved: () -> Unit,
+    onProfile: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(modifier.fillMaxWidth(), contentAlignment = Alignment.BottomCenter) {
+        Row(
+            Modifier.padding(start = 10.dp, end = 10.dp, bottom = 10.dp)
+                .background(
+                    Brush.verticalGradient(listOf(DarkSurface2.copy(alpha = 0.96f), DarkSurface.copy(alpha = 0.96f))),
+                    RoundedCornerShape(28.dp),
+                )
+                .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(28.dp))
+                .padding(horizontal = 6.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            DockItem("💬", "Чаты", tab == 0, onChats)
+            DockItem("👥", "Друзья", tab == 1, onFriends)
+            // MSP AI — особая кнопка (dock .nav-ai)
+            Column(horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.clickable { onAi() }.padding(horizontal = 2.dp)) {
+                Box(
+                    Modifier.width(52.dp).height(34.dp)
+                        .background(
+                            Brush.linearGradient(listOf(Color(0xFF7C5BFF), Color(0xFF5B8CFF), Color(0xFF38D6FF))),
+                            RoundedCornerShape(17.dp),
+                        ).then(if (tab == 2) Modifier.border(2.dp, Color.White.copy(alpha = 0.6f), RoundedCornerShape(17.dp)) else Modifier),
+                    contentAlignment = Alignment.Center,
+                ) { Text("✨", fontSize = 15.sp) }
+                Text("MSP AI", fontSize = 10.5.sp, color = accentColor(Prefs.get().accent), fontWeight = FontWeight.Bold)
+            }
+            DockItem("🔖", "Избранное", false, onSaved)
+            // профиль — аватар круглый 28 (dock .nav-me)
+            Column(horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.clickable { onProfile() }.padding(horizontal = 2.dp)) {
+                Box(Modifier.width(46.dp).height(30.dp), contentAlignment = Alignment.Center) {
+                    Avatar(me.name, 28.dp, me.avatar_url, circle = true)
+                }
+                Text("Профиль", fontSize = 10.5.sp,
+                    color = if (tab == 3) TextC else MutedText)
+            }
+        }
+    }
+}
+
+@Composable
+private fun DockItem(icon: String, label: String, active: Boolean, onClick: () -> Unit) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.clickable { onClick() }.padding(horizontal = 2.dp)) {
+        Box(
+            Modifier.width(46.dp).height(30.dp)
+                .background(
+                    if (active) Brush.linearGradient(listOf(accentColor(Prefs.get().accent), Accent2)) else Brush.linearGradient(listOf(Color.Transparent, Color.Transparent)),
+                    RoundedCornerShape(15.dp),
+                ),
+            contentAlignment = Alignment.Center,
+        ) { Text(icon, fontSize = 14.sp) }
+        Text(label, fontSize = 10.5.sp, color = if (active) TextC else MutedText)
+    }
+}
+
+
+// icon-btn сайта: круглая 38, muted, hover фон
+@Composable
+fun IconBtn(symbol: String, size: Int = 18, onClick: () -> Unit) {
+    Box(
+        Modifier.size(38.dp).clickable { onClick() },
+        contentAlignment = Alignment.Center,
+    ) { Text(symbol, fontSize = size.sp, color = MutedText) }
 }
