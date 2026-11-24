@@ -262,7 +262,11 @@ private fun localDate(instant: Instant): LocalDate =
 
 // «онлайн / был(а) N мин назад» — единый расчёт с веб-версией.
 fun relLastSeen(lastSeen: String?, presence: String?): String {
-    if (presence == "online") return "онлайн"
+    when (presence) {
+        "online" -> return "онлайн"
+        "away" -> return "отошёл(а)"
+        "dnd" -> return "не беспокоить"
+    }
     val instant = lastSeen?.let(::parseIsoInstant) ?: return "не в сети"
     val min = (System.currentTimeMillis() - instant.toEpochMilli()) / 60000
     if (min < 1) return "был(а) только что"
@@ -276,7 +280,11 @@ fun relLastSeen(lastSeen: String?, presence: String?): String {
 }
 
 fun lastSeenShort(lastSeen: String?, presence: String?): String {
-    if (presence == "online") return "онлайн"
+    when (presence) {
+        "online" -> return "онлайн"
+        "away" -> return "отошёл(а)"
+        "dnd" -> return "не беспокоить"
+    }
     val instant = lastSeen?.let(::parseIsoInstant) ?: return "был(а) давно"
     val min = (System.currentTimeMillis() - instant.toEpochMilli()) / 60000
     if (min < 1) return "только что"
@@ -289,21 +297,26 @@ fun lastSeenShort(lastSeen: String?, presence: String?): String {
     return "давно"
 }
 
-fun fmtTime(iso: String): String = try {
-    DateTimeFormatter.ofPattern("HH:mm", Locale.getDefault())
-        .withZone(ZoneId.systemDefault()).format(parseIsoInstant(iso) ?: return "")
-} catch (_: Exception) { "" }
+fun fmtTime(iso: String): String {
+    val instant = parseIsoInstant(iso) ?: return ""
+    return try {
+        DateTimeFormatter.ofPattern("HH:mm", Locale.getDefault())
+            .withZone(ZoneId.systemDefault()).format(instant)
+    } catch (_: Exception) { "" }
+}
 
-fun fmtDay(iso: String): String = try {
-    val date = localDate(parseIsoInstant(iso) ?: return "")
-    val today = LocalDate.now(ZoneId.systemDefault())
-    when (date) {
-        today -> "Сегодня"
-        today.minusDays(1) -> "Вчера"
-        else -> DateTimeFormatter.ofPattern("d MMMM yyyy", Locale("ru"))
-            .format(date)
-    }
-} catch (_: Exception) { "" }
+fun fmtDay(iso: String): String {
+    val instant = parseIsoInstant(iso) ?: return ""
+    return try {
+        val date = localDate(instant)
+        val today = LocalDate.now(ZoneId.systemDefault())
+        when (date) {
+            today -> "Сегодня"
+            today.minusDays(1) -> "Вчера"
+            else -> DateTimeFormatter.ofPattern("d MMMM yyyy", Locale("ru")).format(date)
+        }
+    } catch (_: Exception) { "" }
+}
 
 fun dayKey(iso: String): String =
     parseIsoInstant(iso)?.let { localDate(it).toString() } ?: iso.take(10)
