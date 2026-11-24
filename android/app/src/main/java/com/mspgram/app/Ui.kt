@@ -404,7 +404,7 @@ fun PrimaryBtn(label: String, enabled: Boolean = true, onClick: () -> Unit) {
         Modifier
             .background(
                 if (enabled) Brush.linearGradient(listOf(accentColor(Prefs.get().accent), Accent2))
-                else DarkSurface2,
+                else androidx.compose.ui.graphics.SolidColor(DarkSurface2),
                 RoundedCornerShape(10.dp),
             )
             .clickable(enabled = enabled) { onClick() }
