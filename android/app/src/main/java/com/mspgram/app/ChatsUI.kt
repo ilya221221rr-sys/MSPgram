@@ -278,7 +278,7 @@ fun ChatRow(meId: String, chat: Chat, onOpen: (String) -> Unit, unreadIn: Int = 
                 )
                 if (muted) { Spacer(Modifier.width(4.dp)); Text("🔕", fontSize = 11.sp) }
                 Spacer(Modifier.weight(1f))
-                val time = fmtTime(chat.last_message_at ?: "")
+                val time = fmtListTime(chat.last_message_at ?: "")
                 if (time.isNotEmpty()) {
                     Text(time, color = if (unreadCnt > 0) accentColor(Prefs.get().accent) else MutedText,
                         fontSize = 11.sp, fontWeight = if (unreadCnt > 0) FontWeight.Bold else FontWeight.Normal)
