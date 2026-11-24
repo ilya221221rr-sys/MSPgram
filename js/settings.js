@@ -146,6 +146,13 @@ export function openSettingsModal() {
         </div>
         <div class="settings-row">
           <div>
+            <div class="settings-row-title">📱 Приложение (APK)</div>
+            <div class="settings-row-sub">Push-уведомления о сообщениях и звонках на телефоне</div>
+          </div>
+          <a class="btn ghost sm" href="https://github.com/ilya221221rr-sys/MSPgram/releases/latest/download/app-debug.apk" download>Скачать</a>
+        </div>
+        <div class="settings-row">
+          <div>
             <div class="settings-row-title">Выйти из аккаунта</div>
             <div class="settings-row-sub">Сессия на этом устройстве завершится</div>
           </div>
